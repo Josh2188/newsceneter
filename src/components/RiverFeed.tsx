@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { FeedItem } from "@/lib/sources/types";
 import { FeedCard } from "./FeedCard";
 import { FilterChips, type FilterId } from "./FilterChips";
@@ -42,47 +42,13 @@ export function RiverFeed() {
     load(filter);
   }, [filter, load]);
 
-  const metaBanner = useMemo(() => {
-    const fb = sourceErrors.find((e) => e.source === "facebook");
-    const ig = sourceErrors.find((e) => e.source === "instagram");
-    if (!fb && !ig) return null;
-    const parts: string[] = [];
-    if (fb) parts.push(fb.message);
-    if (ig) parts.push(ig.message);
-    return parts.join(" · ");
-  }, [sourceErrors]);
-
-  const otherErrors = useMemo(
-    () =>
-      sourceErrors.filter(
-        (e) => e.source !== "facebook" && e.source !== "instagram"
-      ),
-    [sourceErrors]
-  );
-
   return (
     <div className="space-y-4">
       <FilterChips value={filter} onChange={setFilter} />
 
-      {metaBanner && !loading && (
-        <div className="rounded-md border border-river-facebook/40 bg-river-facebook/10 px-3 py-2 text-[11px] leading-relaxed text-river-text">
-          <span className="font-medium text-river-facebook">FB／IG 提示：</span>{" "}
-          {metaBanner}
-          <span className="mt-1 block text-river-muted">
-            請在 .env 設定 META_ACCESS_TOKEN（或 FACEBOOK_ACCESS_TOKEN），並於
-            Graph Explorer 執行{" "}
-            <code className="text-river-accent">
-              /me/accounts?fields=id,name,access_token,instagram_business_account
-            </code>{" "}
-            取得 Page token 與 IG User ID。亦可選設{" "}
-            <code className="text-river-accent">RSSHUB_BASE</code> 作為後備。
-          </span>
-        </div>
-      )}
-
-      {otherErrors.length > 0 && !loading && (
+      {sourceErrors.length > 0 && !loading && (
         <div className="rounded-md border border-river-warn/30 bg-river-warn/10 px-3 py-2 text-[11px] text-river-warn">
-          {otherErrors.map((e) => e.message).join(" · ")}
+          {sourceErrors.map((e) => e.message).join(" · ")}
         </div>
       )}
 

@@ -4,16 +4,12 @@ export type FilterId =
   | "all"
   | "ptt"
   | "threads"
-  | "facebook"
-  | "instagram"
   | "news";
 
 const CHIPS: { id: FilterId; label: string }[] = [
   { id: "all", label: "全部" },
   { id: "ptt", label: "PTT" },
   { id: "threads", label: "Threads" },
-  { id: "facebook", label: "FB" },
-  { id: "instagram", label: "IG" },
   { id: "news", label: "新聞" },
 ];
 

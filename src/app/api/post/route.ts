@@ -7,8 +7,6 @@ export const revalidate = 0;
 const VALID: SourceId[] = [
   "ptt",
   "threads",
-  "facebook",
-  "instagram",
   "news",
 ];
 

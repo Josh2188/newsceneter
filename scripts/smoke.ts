@@ -1,8 +1,6 @@
 import { pttSource } from "../src/lib/sources/ptt";
 import { threadsSource } from "../src/lib/sources/threads";
 import { newsSource } from "../src/lib/sources/news";
-import { facebookSource } from "../src/lib/sources/facebook";
-import { instagramSource } from "../src/lib/sources/instagram";
 import { fetchRiver } from "../src/lib/sources/index";
 import type { FeedItem } from "../src/lib/sources/types";
 
@@ -24,31 +22,19 @@ function assertNoStubs(items: FeedItem[], label: string) {
 }
 
 async function main() {
-  const [ptt, threads, news, fb, ig] = await Promise.all([
+  const [ptt, threads, news] = await Promise.all([
     pttSource.fetchFeed(15),
     threadsSource.fetchFeed(20),
     newsSource.fetchFeed(20),
-    facebookSource.fetchFeed(10),
-    instagramSource.fetchFeed(10),
   ]);
 
   console.log(
-    `counts: ptt=${ptt.length} threads=${threads.length} news=${news.length} facebook=${fb.length} instagram=${ig.length}`
+    `counts: ptt=${ptt.length} threads=${threads.length} news=${news.length}`
   );
 
   assertNoStubs(ptt, "ptt");
   assertNoStubs(threads, "threads");
   assertNoStubs(news, "news");
-  assertNoStubs(fb, "facebook");
-  assertNoStubs(ig, "instagram");
-
-  // Without META token, Graph sources may be 0 — that is OK (no stubs).
-  if (fb.length === 0) {
-    console.log("OK facebook empty without token (expected if no META_ACCESS_TOKEN)");
-  }
-  if (ig.length === 0) {
-    console.log("OK instagram empty without token (expected if no META_ACCESS_TOKEN)");
-  }
 
   if (threads.length === 0) {
     console.error("FAIL: threads returned 0");

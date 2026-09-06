@@ -8,8 +8,6 @@ const VALID: (SourceId | "all")[] = [
   "all",
   "ptt",
   "threads",
-  "facebook",
-  "instagram",
   "news",
 ];
 

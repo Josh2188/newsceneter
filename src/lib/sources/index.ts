@@ -1,24 +1,18 @@
 import type { FeedItem, Post, Source, SourceId } from "./types";
 import { pttSource } from "./ptt";
 import { threadsSource, threadsLastError } from "./threads";
-import { facebookSource, facebookLastError } from "./facebook";
-import { instagramSource, instagramLastError } from "./instagram";
 import { newsSource, newsLastError } from "./news";
 
 /** Active sources merged into the default river. */
 export const sources: Source[] = [
   pttSource,
   threadsSource,
-  facebookSource,
-  instagramSource,
   newsSource,
 ];
 
 export const sourceMap: Partial<Record<SourceId, Source>> = {
   ptt: pttSource,
   threads: threadsSource,
-  facebook: facebookSource,
-  instagram: instagramSource,
   news: newsSource,
 };
 
@@ -58,12 +52,6 @@ export async function fetchRiver(options?: {
   const errors: RiverError[] = [];
   if (threadsLastError) {
     errors.push({ source: "threads", message: threadsLastError });
-  }
-  if (facebookLastError) {
-    errors.push({ source: "facebook", message: facebookLastError });
-  }
-  if (instagramLastError) {
-    errors.push({ source: "instagram", message: instagramLastError });
   }
   if (newsLastError) {
     errors.push({ source: "news", message: newsLastError });

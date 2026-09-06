@@ -1,4 +1,4 @@
-export type SourceId = "ptt" | "threads" | "facebook" | "instagram" | "news";
+export type SourceId = "ptt" | "threads" | "news";
 
 export interface Engagement {
   likes?: number;
