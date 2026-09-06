@@ -1,5 +1,10 @@
 import * as cheerio from "cheerio";
 import { getCached, setCache } from "../cache";
+import {
+  absoluteUrl,
+  dedupeUrls,
+  looksLikeImageUrl,
+} from "../images";
 import type { Comment, FeedItem, Post, Source } from "./types";
 
 const BASE = "https://www.ptt.cc";
@@ -127,6 +132,57 @@ function parsePushes($: cheerio.CheerioAPI): Comment[] {
   return comments;
 }
 
+
+function extractPttImages(html: string, pageUrl: string): string[] {
+  const $ = cheerio.load(html);
+  const found: string[] = [];
+
+  // <img src> in article
+  $("#main-content img[src], #main-content img[data-src]").each((_, el) => {
+    const src = $(el).attr("src") || $(el).attr("data-src") || "";
+    const abs = absoluteUrl(src, pageUrl);
+    if (abs) found.push(abs);
+  });
+
+  // Anchors pointing at image files
+  $("#main-content a[href]").each((_, el) => {
+    const href = $(el).attr("href") || "";
+    const abs = absoluteUrl(href, pageUrl);
+    if (abs && looksLikeImageUrl(abs)) found.push(abs);
+  });
+
+  // Plain URLs in article text (imgur etc.)
+  const main = $("#main-content").clone();
+  main.find(".article-metaline, .article-metaline-right, .push").remove();
+  const bodyText = main.text();
+  const urlRe =
+    /https?:\/\/[^\s<>"'\]\)]+/gi;
+  let m: RegExpExecArray | null;
+  while ((m = urlRe.exec(bodyText)) !== null) {
+    let raw = m[0].replace(/[.,;:!?)]+$/, "");
+    const abs = absoluteUrl(raw, pageUrl);
+    if (!abs) continue;
+    if (looksLikeImageUrl(abs)) {
+      found.push(abs);
+      continue;
+    }
+    // bare imgur album/page often resolves as image via i.imgur.com/<id>.jpg — keep gallery pages only if ext present
+    try {
+      const u = new URL(abs);
+      if (
+        /(^|\.)imgur\.com$/i.test(u.hostname) &&
+        /\/(?:[A-Za-z0-9]{5,})\.(?:jpe?g|png|gif|webp)$/i.test(u.pathname)
+      ) {
+        found.push(abs);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return dedupeUrls(found);
+}
+
 async function fetchArticle(board: string, id: string): Promise<Post | null> {
   const cacheKey = `ptt:post:${board}:${id}`;
   const cached = getCached<Post>(cacheKey);
@@ -163,6 +219,8 @@ async function fetchArticle(board: string, id: string): Promise<Post | null> {
       : new Date().toISOString();
 
     const preview = body.slice(0, 160).replace(/\s+/g, " ");
+    const pageUrl = `${BASE}${path}`;
+    const images = extractPttImages(html, pageUrl);
 
     const post: Post = {
       id: `ptt:${board}:${id}`,
@@ -173,7 +231,8 @@ async function fetchArticle(board: string, id: string): Promise<Post | null> {
       createdAt,
       preview,
       body,
-      url: `${BASE}${path}`,
+      url: pageUrl,
+      images: images.length ? images : undefined,
       engagement: { pushes, boos, arrows, comments: comments.length },
       comments,
       detailParams: { source: "ptt", board, id },

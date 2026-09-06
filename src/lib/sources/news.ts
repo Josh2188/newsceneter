@@ -6,6 +6,11 @@ import {
   normalizeParagraphs,
   UA_CHROME,
 } from "../html";
+import {
+  absoluteUrl,
+  dedupeUrls,
+  isJunkImageUrl,
+} from "../images";
 import type { FeedItem, Post, Source } from "./types";
 
 const CACHE_TTL = 60_000;
@@ -169,6 +174,113 @@ function extractJsonLdArticleBody(html: string): string {
   return longestText(bodies);
 }
 
+
+function collectJsonLdImages(value: unknown, out: string[]): void {
+  if (!value) return;
+  if (typeof value === "string") {
+    out.push(value);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const v of value) collectJsonLdImages(v, out);
+    return;
+  }
+  if (typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    if (typeof obj.url === "string") out.push(obj.url);
+    if (typeof obj.contentUrl === "string") out.push(obj.contentUrl);
+  }
+}
+
+function extractNewsImages(url: string, html: string): string[] {
+  const $ = cheerio.load(html);
+  const content: string[] = [];
+  const meta: string[] = [];
+
+  const push = (bucket: string[], raw: string | undefined | null) => {
+    const abs = absoluteUrl(raw || "", url);
+    if (!abs || isJunkImageUrl(abs)) return;
+    bucket.push(abs);
+  };
+
+  // Prefer article content images
+  const contentRoots = [
+    "[itemprop=articleBody]",
+    "article",
+    ".paragraph",
+    ".article-content__editor",
+    ".article-content",
+    ".article-body",
+    ".post-content",
+    ".story-content",
+    "#newscontent",
+    "#newscotent",
+    ".text",
+    "main",
+  ];
+  const seenEls = new Set<unknown>();
+  for (const sel of contentRoots) {
+    $(sel).each((_, root) => {
+      if (seenEls.has(root)) return;
+      seenEls.add(root);
+      $(root)
+        .find("img[src], img[data-src], img[data-original]")
+        .each((__, el) => {
+          const $el = $(el);
+          const cls =
+            ($el.attr("class") || "") + " " + ($el.attr("id") || "");
+          if (/logo|icon|avatar|ad|share|social|banner/i.test(cls)) return;
+          const w = Number($el.attr("width") || 0);
+          const h = Number($el.attr("height") || 0);
+          if ((w > 0 && w <= 2) || (h > 0 && h <= 2)) return;
+          push(
+            content,
+            $el.attr("src") ||
+              $el.attr("data-src") ||
+              $el.attr("data-original")
+          );
+        });
+    });
+  }
+
+  // og:image / twitter:image as fallback meta
+  $('meta[property="og:image"], meta[property="og:image:url"], meta[name="twitter:image"]').each(
+    (_, el) => {
+      push(meta, $(el).attr("content"));
+    }
+  );
+
+  // JSON-LD image
+  $('script[type="application/ld+json"]').each((_, el) => {
+    try {
+      const raw = $(el).html() || "";
+      const parsed = JSON.parse(raw) as unknown;
+      const arr = Array.isArray(parsed) ? parsed : [parsed];
+      for (const o of arr) {
+        if (!o || typeof o !== "object") continue;
+        const obj = o as Record<string, unknown>;
+        const type = String(obj["@type"] || "");
+        if (
+          /Article|NewsArticle|BlogPosting|WebPage|ImageObject/i.test(type) ||
+          obj.image
+        ) {
+          collectJsonLdImages(obj.image, meta);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  });
+
+  // Prefer content; fill with meta if content empty / thin
+  const preferred = dedupeUrls(content);
+  if (preferred.length >= 1) {
+    // Also append non-duplicate meta (e.g. hero not inside body)
+    return dedupeUrls([...preferred, ...meta]);
+  }
+  return dedupeUrls(meta);
+}
+
 function scrapeFromHtml(url: string, html: string): string {
   const $ = cheerio.load(html);
   $("script, style, noscript, iframe, nav, footer, header").remove();
@@ -302,6 +414,7 @@ export type ScrapeResult = {
   body: string;
   scraped: boolean;
   status?: number;
+  images?: string[];
 };
 
 /**
@@ -323,10 +436,12 @@ export async function scrapeArticle(url: string): Promise<ScrapeResult> {
       return setCache(cacheKey, result, BODY_CACHE_TTL);
     }
     const body = scrapeFromHtml(url, html);
+    const images = extractNewsImages(url, html);
     const result: ScrapeResult = {
       body,
       scraped: body.length >= 80,
       status,
+      images: images.length ? images : undefined,
     };
     return setCache(cacheKey, result, BODY_CACHE_TTL);
   } catch (err) {
@@ -416,6 +531,8 @@ export const newsSource: Source = {
       status: scrape.status,
     });
 
+    const images = scrape.images?.length ? scrape.images : undefined;
+
     const post: Post = {
       id: item?.id || `news:${Buffer.from(url).toString("base64url").slice(0, 24)}`,
       source: "news",
@@ -426,6 +543,7 @@ export const newsSource: Source = {
       preview: preview || body.slice(0, 180),
       body,
       url,
+      images,
       comments: [],
       detailParams: {
         source: "news",

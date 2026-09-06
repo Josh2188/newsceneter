@@ -2,6 +2,7 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { getCached, setCache } from "../cache";
 import { UA_CHROME, UA_GOOGLEBOT } from "../html";
+import { dedupeUrls, pickBestCandidate } from "../images";
 import type { Comment, FeedItem, Post, Source } from "./types";
 import bundledCacheImport from "../../data/threads-cache.json";
 
@@ -69,7 +70,47 @@ export type RawPost = {
   likeCount?: number;
   commentCount?: number;
   takenAt?: number;
+  images?: string[];
 };
+
+
+/** Pull image URLs from a Threads/IG-style post node. */
+export function extractImagesFromThreadsPost(
+  post: Record<string, unknown> | null | undefined
+): string[] {
+  if (!post) return [];
+  const urls: string[] = [];
+
+  const pushFromIv2 = (node: Record<string, unknown> | null | undefined) => {
+    if (!node) return;
+    const iv2 = node.image_versions2 as
+      | { candidates?: Array<{ url?: string; width?: number; height?: number }> }
+      | null
+      | undefined;
+    const best = pickBestCandidate(iv2?.candidates || []);
+    if (best) urls.push(best);
+  };
+
+  // Single image
+  pushFromIv2(post);
+
+  // Carousel
+  const carousel = post.carousel_media as
+    | Array<Record<string, unknown>>
+    | null
+    | undefined;
+  if (Array.isArray(carousel)) {
+    for (const slide of carousel) {
+      pushFromIv2(slide);
+    }
+  }
+
+  // Sometimes nested under text_post_app_info / media
+  const media = post.media as Record<string, unknown> | null | undefined;
+  if (media) pushFromIv2(media);
+
+  return dedupeUrls(urls);
+}
 
 export function parseMediaData(html: string, fallbackUser: string): RawPost[] {
   const marker = '"mediaData":';
@@ -110,6 +151,7 @@ export function parseMediaData(html: string, fallbackUser: string): RawPost[] {
       | undefined;
 
     seen.add(code);
+    const images = extractImagesFromThreadsPost(post);
     out.push({
       code,
       username,
@@ -121,6 +163,7 @@ export function parseMediaData(html: string, fallbackUser: string): RawPost[] {
           ? tpa.direct_reply_count
           : undefined,
       takenAt: typeof post.taken_at === "number" ? post.taken_at : undefined,
+      images: images.length ? images : undefined,
     });
   }
   return out;
@@ -167,7 +210,7 @@ export function parsePostPageData(
   html: string,
   rootCode: string,
   fallbackUser: string
-): { rootText: string; comments: Comment[]; root?: RawPost } {
+): { rootText: string; comments: Comment[]; root?: RawPost; images: string[] } {
   const comments: Comment[] = [];
   let rootText = "";
   let root: RawPost | undefined;
@@ -181,6 +224,7 @@ export function parsePostPageData(
       commentCount?: number;
       takenAt?: number;
       isReply?: boolean;
+      images?: string[];
     }> = [];
     const seen = new Set<string>();
     for (const edge of edges || []) {
@@ -194,7 +238,9 @@ export function parsePostPageData(
         if (!code || seen.has(code)) continue;
         const caption = post.caption as { text?: string } | null | undefined;
         const text = (caption?.text || "").trim();
-        if (!text) continue;
+        // Allow image-only posts (empty caption) when images exist
+        const images = extractImagesFromThreadsPost(post);
+        if (!text && images.length === 0) continue;
         const userObj = post.user as { username?: string } | null | undefined;
         const username = userObj?.username || fallbackUser;
         const tpa = post.text_post_app_info as
@@ -214,6 +260,7 @@ export function parsePostPageData(
               : undefined,
           takenAt: typeof post.taken_at === "number" ? post.taken_at : undefined,
           isReply: Boolean(tpa?.is_reply) || code !== rootCode,
+          images: images.length ? images : undefined,
         });
       }
     }
@@ -241,8 +288,9 @@ export function parsePostPageData(
               likeCount: p.likeCount,
               commentCount: p.commentCount,
               takenAt: p.takenAt,
+              images: p.images,
             };
-          } else {
+          } else if (p.text) {
             comments.push({
               id: `threads-reply-${p.code}`,
               author: p.username,
@@ -281,18 +329,35 @@ export function parsePostPageData(
         if (!posts.length) continue;
         for (const p of posts) {
           if (p.code === rootCode || (!root && !p.isReply)) {
-            if (p.text.length > rootText.length) {
-              rootText = p.text;
+            if (p.text.length > rootText.length || (!rootText && p.images?.length)) {
+              rootText = p.text || rootText;
               root = {
                 code: p.code,
                 username: p.username,
-                text: p.text,
+                text: p.text || rootText,
                 likeCount: p.likeCount,
                 commentCount: p.commentCount,
                 takenAt: p.takenAt,
+                images: p.images?.length ? p.images : root?.images,
               };
+            } else if (p.images?.length && !root?.images?.length) {
+              if (root) root.images = p.images;
+              else {
+                root = {
+                  code: p.code,
+                  username: p.username,
+                  text: p.text,
+                  likeCount: p.likeCount,
+                  commentCount: p.commentCount,
+                  takenAt: p.takenAt,
+                  images: p.images,
+                };
+              }
             }
-          } else if (!comments.some((c) => c.id === `threads-reply-${p.code}`)) {
+          } else if (
+            p.text &&
+            !comments.some((c) => c.id === `threads-reply-${p.code}`)
+          ) {
             comments.push({
               id: `threads-reply-${p.code}`,
               author: p.username,
@@ -319,7 +384,8 @@ export function parsePostPageData(
     }
   }
 
-  return { rootText, comments, root };
+  const images = dedupeUrls(root?.images || []);
+  return { rootText, comments, root, images };
 }
 
 export async function fetchPostHtml(
@@ -377,6 +443,7 @@ export function toFeedItem(raw: RawPost): FeedItem {
       : createdAt,
     preview,
     url,
+    images: raw.images?.length ? raw.images : undefined,
     engagement: {
       likes: raw.likeCount,
       comments: raw.commentCount,
@@ -581,6 +648,7 @@ export const threadsSource: Source = {
     let bodyText = "";
     let comments: Comment[] = [];
     let scrapeNote: string | null = null;
+    let images: string[] = [];
 
     // Memory / bundled body cache first (fast path for caption)
     const bodyCached = getCached<{ text: string; item: FeedItem }>(
@@ -589,6 +657,7 @@ export const threadsSource: Source = {
     if (bodyCached) {
       baseItem = bodyCached.item;
       bodyText = bodyCached.text;
+      if (baseItem.images?.length) images = [...baseItem.images];
     }
 
     if (!baseItem) {
@@ -601,6 +670,7 @@ export const threadsSource: Source = {
         if (item) {
           baseItem = item;
           bodyText = text || item.preview;
+          if (item.images?.length) images = [...item.images];
         }
       }
     }
@@ -646,6 +716,9 @@ export const threadsSource: Source = {
             CACHE_TTL * 2
           );
         }
+        if (parsed.images.length) {
+          images = dedupeUrls([...images, ...parsed.images]);
+        }
         comments = parsed.comments;
         if (
           comments.length === 0 &&
@@ -671,10 +744,15 @@ export const threadsSource: Source = {
       body = `${body}\n\n※ ${scrapeNote}`;
     }
 
+    if (!images.length && baseItem.images?.length) {
+      images = [...baseItem.images];
+    }
+
     return {
       ...baseItem,
       body,
       comments,
+      images: images.length ? images : undefined,
     } satisfies Post;
   },
 };

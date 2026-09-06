@@ -17,6 +17,8 @@ export function FeedCard({ item }: { item: FeedItem }) {
   if (eng?.likes) engBits.push(`♥ ${eng.likes}`);
   if (eng?.comments && !eng.pushes) engBits.push(`留言 ${eng.comments}`);
 
+  const thumb = item.images?.[0];
+
   return (
     <Link
       href={detailHref(item)}
@@ -29,12 +31,26 @@ export function FeedCard({ item }: { item: FeedItem }) {
           {formatTime(item.createdAt)}
         </span>
       </div>
-      <h2 className="mb-1.5 text-[15px] font-semibold leading-snug text-river-text">
-        {item.title}
-      </h2>
-      <p className="line-clamp-2 text-sm leading-relaxed text-river-muted">
-        {item.preview}
-      </p>
+      <div className={thumb ? "flex gap-3" : undefined}>
+        <div className="min-w-0 flex-1">
+          <h2 className="mb-1.5 text-[15px] font-semibold leading-snug text-river-text">
+            {item.title}
+          </h2>
+          <p className="line-clamp-2 text-sm leading-relaxed text-river-muted">
+            {item.preview}
+          </p>
+        </div>
+        {thumb && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={thumb}
+            alt=""
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            className="h-16 w-16 shrink-0 rounded-md border border-river-border object-cover"
+          />
+        )}
+      </div>
       <div className="mt-2.5 flex items-center gap-3 text-[11px] text-river-muted">
         <span>{item.author}</span>
         {engBits.length > 0 && (

@@ -98,6 +98,35 @@ export default async function PostPage({
         {post.body}
       </div>
 
+      {post.images && post.images.length > 0 && (
+        <section className="mb-8" aria-label="文章圖片">
+          <h2 className="mb-3 font-mono text-sm font-semibold text-river-muted">
+            圖片（{post.images.length}）
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {post.images.map((src) => (
+              <a
+                key={src}
+                href={src}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block overflow-hidden rounded-lg border border-river-border bg-river-panel/40"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={src}
+                  alt=""
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                  className="max-h-[480px] w-full object-contain"
+                  style={{ maxWidth: "100%" }}
+                />
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section>
         <h2 className="mb-3 font-mono text-sm font-semibold text-river-muted">
           回應{comments.length > 0 ? `（${comments.length}）` : ""}

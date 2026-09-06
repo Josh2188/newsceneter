@@ -20,6 +20,8 @@ export interface FeedItem {
   engagement?: Engagement;
   /** Extra route params for detail (e.g. PTT board + article id) */
   detailParams?: Record<string, string>;
+  /** Article / post image URLs when known (optional; do not invent). */
+  images?: string[];
 }
 
 export interface Comment {
