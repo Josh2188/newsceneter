@@ -1,19 +1,39 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { FeedItem } from "@/lib/sources/types";
-import { FeedCard } from "./FeedCard";
+import { clusterConfluence, detailHref } from "@/lib/confluence";
+import { computeThermometer } from "@/lib/thermometer";
+import {
+  clearReadIds,
+  loadReadIds,
+  markRead,
+} from "@/lib/readIds";
+import { FeedCard, ImageWallCard } from "./FeedCard";
 import { FilterChips, type FilterId } from "./FilterChips";
+import { RiverThermometer } from "./RiverThermometer";
+import { RiverToolbar } from "./RiverToolbar";
 
 type RiverErr = { source: string; message: string };
 
 export function RiverFeed() {
+  const router = useRouter();
   const [filter, setFilter] = useState<FilterId>("all");
   const [items, setItems] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sourceErrors, setSourceErrors] = useState<RiverErr[]>([]);
   const [fetchedAt, setFetchedAt] = useState<string | null>(null);
+
+  const [readIds, setReadIds] = useState<Set<string>>(new Set());
+  const [unreadOnly, setUnreadOnly] = useState(false);
+  const [imageWall, setImageWall] = useState(false);
+  const [diving, setDiving] = useState(false);
+
+  useEffect(() => {
+    setReadIds(loadReadIds());
+  }, []);
 
   const load = useCallback(async (source: FilterId) => {
     setLoading(true);
@@ -42,9 +62,83 @@ export function RiverFeed() {
     load(filter);
   }, [filter, load]);
 
+  const thermo = useMemo(() => computeThermometer(items), [items]);
+  const confluenceMap = useMemo(() => clusterConfluence(items), [items]);
+
+  const itemsById = useMemo(() => {
+    const m = new Map<string, FeedItem>();
+    for (const it of items) m.set(it.id, it);
+    return m;
+  }, [items]);
+
+  const filtered = useMemo(() => {
+    let list = items;
+    if (unreadOnly) {
+      list = list.filter((it) => !readIds.has(it.id));
+    }
+    if (imageWall) {
+      list = list.filter((it) => it.images && it.images.length > 0);
+    }
+    return list;
+  }, [items, unreadOnly, readIds, imageWall]);
+
+  const handleOpen = useCallback((id: string) => {
+    const next = markRead(id);
+    setReadIds(new Set(next));
+  }, []);
+
+  const handleClearRead = useCallback(() => {
+    clearReadIds();
+    setReadIds(new Set());
+  }, []);
+
+  const handleRandomDive = useCallback(() => {
+    if (filtered.length === 0) return;
+    const pick = filtered[Math.floor(Math.random() * filtered.length)];
+    setDiving(true);
+    handleOpen(pick.id);
+    setTimeout(() => {
+      router.push(detailHref(pick));
+    }, 180);
+    setTimeout(() => setDiving(false), 600);
+  }, [filtered, handleOpen, router]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement)?.isContentEditable) {
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === "r" || e.key === "R") {
+        e.preventDefault();
+        handleRandomDive();
+      } else if (e.key === "g" || e.key === "G") {
+        e.preventDefault();
+        setImageWall((v) => !v);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [handleRandomDive]);
+
   return (
     <div className="space-y-4">
       <FilterChips value={filter} onChange={setFilter} />
+
+      {!loading && !error && items.length > 0 && (
+        <RiverThermometer stats={thermo} />
+      )}
+
+      <RiverToolbar
+        onRandomDive={handleRandomDive}
+        unreadOnly={unreadOnly}
+        onUnreadOnlyChange={setUnreadOnly}
+        onClearRead={handleClearRead}
+        imageWall={imageWall}
+        onImageWallChange={setImageWall}
+        diving={diving}
+      />
 
       {sourceErrors.length > 0 && !loading && (
         <div className="rounded-md border border-river-warn/30 bg-river-warn/10 px-3 py-2 text-[11px] text-river-warn">
@@ -58,7 +152,11 @@ export function RiverFeed() {
             ? "載入中…"
             : error
               ? "發生錯誤"
-              : `共 ${items.length} 則 · 單一河道時間排序`}
+              : `共 ${filtered.length} 則${
+                  unreadOnly || imageWall
+                    ? `（篩自 ${items.length}）`
+                    : ""
+                } · 單一河道時間排序`}
         </span>
         <button
           type="button"
@@ -94,20 +192,52 @@ export function RiverFeed() {
         </div>
       )}
 
-      {!loading && !error && items.length === 0 && (
+      {!loading && !error && filtered.length === 0 && (
         <div className="rounded-lg border border-dashed border-river-border p-8 text-center text-sm text-river-muted">
-          河道目前沒有內容。試試其他來源，或稍後再整理。
+          {imageWall
+            ? "圖牆空空——這批河道沒有帶圖的帖，切回列表再逛逛。"
+            : unreadOnly
+              ? "已讀完啦，關閉「僅未讀」或清除已讀再來。"
+              : "河道目前沒有內容。試試其他來源，或稍後再整理。"}
         </div>
       )}
 
-      {!loading && !error && items.length > 0 && (
+      {!loading && !error && filtered.length > 0 && !imageWall && (
         <ul className="space-y-3">
-          {items.map((item) => (
-            <li key={item.id}>
-              <FeedCard item={item} />
-            </li>
-          ))}
+          {filtered.map((item) => {
+            const group = confluenceMap.get(item.id) || null;
+            const siblings = group
+              ? group.memberIds
+                  .map((id) => itemsById.get(id))
+                  .filter((x): x is FeedItem => !!x)
+              : [];
+            return (
+              <li key={item.id}>
+                <FeedCard
+                  item={item}
+                  confluence={group}
+                  siblings={siblings}
+                  isRead={readIds.has(item.id)}
+                  onOpen={handleOpen}
+                />
+              </li>
+            );
+          })}
         </ul>
+      )}
+
+      {!loading && !error && filtered.length > 0 && imageWall && (
+        <div className="columns-2 gap-3 sm:columns-3">
+          {filtered.map((item) => (
+            <div key={item.id} className="mb-3 break-inside-avoid">
+              <ImageWallCard
+                item={item}
+                isRead={readIds.has(item.id)}
+                onOpen={handleOpen}
+              />
+            </div>
+          ))}
+        </div>
       )}
 
       {fetchedAt && !loading && (

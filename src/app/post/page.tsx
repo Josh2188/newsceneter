@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { fetchPostDetail, type SourceId } from "@/lib/sources";
 import { formatAbsolute } from "@/lib/format";
 import { SourceBadge } from "@/components/SourceBadge";
+import { MarkRead } from "@/components/MarkRead";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +48,7 @@ export default async function PostPage({
 
   return (
     <article>
+      <MarkRead id={post.id} />
       <Link
         href="/"
         className="mb-4 inline-flex text-xs text-river-muted hover:text-river-accent"
