@@ -1,6 +1,7 @@
 /**
- * Scrape DEFAULT_USERS from threads.com and write src/data/threads-cache.json
- * for Vercel / datacenter fallback when live scrape returns 0.
+ * Scrape DEFAULT_USERS (Taiwan Traditional Chinese accounts) from threads.com
+ * and write src/data/threads-cache.json for Vercel / datacenter fallback when
+ * live scrape returns 0. Prefers CJK posts when merging.
  *
  * Usage: npx tsx scripts/refresh-threads-cache.ts
  */
@@ -8,6 +9,8 @@ import { writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import {
   DEFAULT_USERS,
+  hasCjk,
+  preferCjkItems,
   scrapeUserPosts,
   type ThreadsCacheFile,
 } from "../src/lib/sources/threads";
@@ -34,15 +37,29 @@ async function main() {
     }
   }
 
-  const items = [...byId.values()].sort(
+  const sorted = [...byId.values()].sort(
     (a, b) =>
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
+  // Prefer CJK; drop pure-English when enough CJK posts exist
+  const cjkCount = sorted.filter(hasCjk).length;
+  const items =
+    cjkCount >= 10
+      ? preferCjkItems(sorted, cjkCount)
+      : preferCjkItems(sorted, Math.max(sorted.length, 20));
+
+  const keptCodes = new Set(
+    items.map((i) => i.detailParams?.id).filter(Boolean) as string[]
+  );
+  const prunedBodies: Record<string, string> = {};
+  for (const [code, text] of Object.entries(bodies)) {
+    if (keptCodes.has(code)) prunedBodies[code] = text;
+  }
 
   const payload: ThreadsCacheFile = {
     updatedAt: new Date().toISOString(),
     items,
-    bodies,
+    bodies: prunedBodies,
   };
 
   const outDir = join(process.cwd(), "src/data");

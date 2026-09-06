@@ -5,8 +5,17 @@ import type { FeedItem, Post, Source } from "./types";
 import bundledCacheImport from "../../data/threads-cache.json";
 
 export const CACHE_TTL = 60_000;
-/** Default accounts that return mediaData from datacenter IPs. Many TW accounts return empty HTML — override with THREADS_USERS. */
-export const DEFAULT_USERS = ["zuck", "meta", "threads"];
+/** Default Taiwan / Traditional Chinese accounts (mediaData=true from this env). Override with THREADS_USERS. */
+export const DEFAULT_USERS = [
+  "thenewslens",
+  "dcard.tw",
+  "ftvnews",
+  "ctinews",
+  "taipeitravel",
+  "moc_taiwan",
+  "gamer_com_tw",
+  "dating.pettrainer",
+];
 
 const UA_CHROME =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -267,6 +276,26 @@ function loadBundledCache(): ThreadsCacheFile | null {
   return null;
 }
 
+
+const CJK_RE = /[\u4e00-\u9fff]/;
+
+export function hasCjk(item: FeedItem): boolean {
+  const hay = `${item.title || ""} ${item.preview || ""}`;
+  return CJK_RE.test(hay);
+}
+
+/** Prefer CJK posts; fill with non-CJK only if under limit. */
+export function preferCjkItems(items: FeedItem[], limit: number): FeedItem[] {
+  const cjk: FeedItem[] = [];
+  const other: FeedItem[] = [];
+  for (const item of items) {
+    if (hasCjk(item)) cjk.push(item);
+    else other.push(item);
+  }
+  if (cjk.length >= limit) return cjk.slice(0, limit);
+  return [...cjk, ...other].slice(0, limit);
+}
+
 function applyBundledCache(limit: number): FeedItem[] {
   const bundled = loadBundledCache();
   if (!bundled?.items?.length) return [];
@@ -282,12 +311,11 @@ function applyBundledCache(limit: number): FeedItem[] {
     }
   }
 
-  const items = [...bundled.items]
-    .sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    )
-    .slice(0, limit);
+  const sorted = [...bundled.items].sort(
+    (a, b) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+  const items = preferCjkItems(sorted, limit);
 
   console.warn(
     `[threads] 「Threads 即時抓取受限，已顯示快取」 (${items.length} items, updatedAt=${bundled.updatedAt})`
@@ -314,6 +342,7 @@ async function fetchUserPosts(username: string): Promise<FeedItem[]> {
   }
 }
 
+
 export const threadsSource: Source = {
   id: "threads",
   label: "Threads",
@@ -331,12 +360,11 @@ export const threadsSource: Source = {
         if (!byId.has(item.id)) byId.set(item.id, item);
       }
     }
-    let items = [...byId.values()]
-      .sort(
-        (a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      )
-      .slice(0, limit);
+    const sorted = [...byId.values()].sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+    let items = preferCjkItems(sorted, limit);
 
     if (items.length === 0) {
       // Live scrape empty (common on Vercel datacenter IPs) → bundled cache
