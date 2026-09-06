@@ -47,7 +47,7 @@ async function main() {
       url: s.url,
       title: s.title.slice(0, 70),
     });
-    if (!s.url.includes("threads.net/@")) {
+    if (!s.url.includes("threads.com/@") && !s.url.includes("threads.net/@")) {
       console.error("FAIL: bad threads url");
       process.exitCode = 1;
     }
