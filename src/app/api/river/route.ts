@@ -4,7 +4,14 @@ import { fetchRiver, type SourceId } from "@/lib/sources";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const VALID: (SourceId | "all")[] = ["all", "ptt", "threads", "news"];
+const VALID: (SourceId | "all")[] = [
+  "all",
+  "ptt",
+  "threads",
+  "facebook",
+  "instagram",
+  "news",
+];
 
 export async function GET(req: NextRequest) {
   const sourceParam = (

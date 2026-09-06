@@ -39,12 +39,15 @@ async function main() {
   assertNoStubs(ptt, "ptt");
   assertNoStubs(threads, "threads");
   assertNoStubs(news, "news");
+  assertNoStubs(fb, "facebook");
+  assertNoStubs(ig, "instagram");
 
-  if (fb.length !== 0 || ig.length !== 0) {
-    console.error("FAIL: facebook/instagram must stay empty");
-    process.exitCode = 1;
-  } else {
-    console.log("OK facebook/instagram disabled (0)");
+  // Without META token, Graph sources may be 0 — that is OK (no stubs).
+  if (fb.length === 0) {
+    console.log("OK facebook empty without token (expected if no META_ACCESS_TOKEN)");
+  }
+  if (ig.length === 0) {
+    console.log("OK instagram empty without token (expected if no META_ACCESS_TOKEN)");
   }
 
   if (threads.length === 0) {
@@ -76,11 +79,6 @@ async function main() {
   console.log("river per-source:", by, "total=", items.length);
   if (errors?.length) console.log("river errors:", errors);
   assertNoStubs(items, "river");
-
-  if (by.facebook || by.instagram) {
-    console.error("FAIL: river contains facebook/instagram");
-    process.exitCode = 1;
-  }
 
   const code = threads[0]?.detailParams?.id;
   if (code) {

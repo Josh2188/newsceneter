@@ -2,6 +2,7 @@ import { getCached, setCache } from "../cache";
 import type { FeedItem, Post, Source } from "./types";
 
 const CACHE_TTL = 60_000;
+/** Default accounts that return mediaData from datacenter IPs. Many TW accounts return empty HTML — override with THREADS_USERS. */
 const DEFAULT_USERS = ["zuck", "meta", "threads"];
 
 const UA_CHROME =
