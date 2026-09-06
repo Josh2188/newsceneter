@@ -1,7 +1,15 @@
+import * as cheerio from "cheerio";
 import { getCached, setCache } from "../cache";
+import {
+  fetchHtml,
+  longestText,
+  normalizeParagraphs,
+  UA_CHROME,
+} from "../html";
 import type { FeedItem, Post, Source } from "./types";
 
 const CACHE_TTL = 60_000;
+const BODY_CACHE_TTL = 120_000;
 
 /** Public Taiwan-oriented RSS endpoints (best-effort). */
 const FEEDS: { channel: string; url: string }[] = [
@@ -48,13 +56,30 @@ function extractTag(block: string, tag: string): string {
   return m ? decodeXml(m[1]) : "";
 }
 
+/** Prefer <link>, then guid when it looks like a URL (UDN sometimes). */
+function extractLink(block: string): string {
+  const link = extractTag(block, "link");
+  if (link && /^https?:\/\//i.test(link)) return link;
+  const guidRaw =
+    block.match(/<guid[^>]*>([\s\S]*?)<\/guid>/i)?.[1] || "";
+  const guid = decodeXml(guidRaw);
+  if (guid && /^https?:\/\//i.test(guid)) return guid;
+  return link || "";
+}
+
+function extractDescription(block: string): string {
+  const encoded = extractTag(block, "content:encoded");
+  const desc = extractTag(block, "description");
+  return longestText([encoded, desc]);
+}
+
 function parseRss(xml: string, channel: string): FeedItem[] {
   const items: FeedItem[] = [];
   const blocks = xml.match(/<item[\s\S]*?<\/item>/gi) || [];
   for (const block of blocks.slice(0, 12)) {
     const title = extractTag(block, "title");
-    const link = extractTag(block, "link");
-    const desc = extractTag(block, "description");
+    const link = extractLink(block);
+    const desc = extractDescription(block);
     const pub = extractTag(block, "pubDate");
     const author =
       extractTag(block, "dc:creator") ||
@@ -103,6 +128,246 @@ async function fetchOneFeed(
   }
 }
 
+function joinMeaningful(
+  $: cheerio.CheerioAPI,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  root: cheerio.Cheerio<any>,
+  selector: string,
+  skipRe?: RegExp
+): string {
+  const parts: string[] = [];
+  root.find(selector).each((_, el) => {
+    const cls = ($(el).attr("class") || "") + " " + ($(el).attr("id") || "");
+    if (skipRe && skipRe.test(cls)) return;
+    const t = $(el).text().replace(/\s+/g, " ").trim();
+    if (t.length < 15) return;
+    if (/^(延伸閱讀|相關新聞|熱門新聞|廣告|推薦)/.test(t)) return;
+    parts.push(t);
+  });
+  return normalizeParagraphs(parts.join("\n\n"));
+}
+
+function extractJsonLdArticleBody(html: string): string {
+  const $ = cheerio.load(html);
+  const bodies: string[] = [];
+  $('script[type="application/ld+json"]').each((_, el) => {
+    try {
+      const raw = $(el).html() || "";
+      const parsed = JSON.parse(raw) as unknown;
+      const arr = Array.isArray(parsed) ? parsed : [parsed];
+      for (const o of arr) {
+        if (!o || typeof o !== "object") continue;
+        const obj = o as Record<string, unknown>;
+        if (typeof obj.articleBody === "string" && obj.articleBody.trim()) {
+          bodies.push(normalizeParagraphs(obj.articleBody));
+        }
+      }
+    } catch {
+      /* ignore bad ld+json */
+    }
+  });
+  return longestText(bodies);
+}
+
+function scrapeFromHtml(url: string, html: string): string {
+  const $ = cheerio.load(html);
+  $("script, style, noscript, iframe, nav, footer, header").remove();
+
+  const host = (() => {
+    try {
+      return new URL(url).hostname.replace(/^www\./, "");
+    } catch {
+      return "";
+    }
+  })();
+
+  const candidates: string[] = [];
+
+  // JSON-LD articleBody (CNA, TNL, many others)
+  candidates.push(extractJsonLdArticleBody(html));
+
+  // CNA
+  if (host.includes("cna.com.tw")) {
+    const paras: string[] = [];
+    $(".paragraph").each((_, el) => {
+      const cls = $(el).attr("class") || "";
+      if (/banner|appDownload|ADbox|ad|bottomArticle/i.test(cls)) return;
+      const t = $(el).text().replace(/\s+/g, " ").trim();
+      if (t.length > 20) paras.push(t);
+    });
+    candidates.push(normalizeParagraphs(paras.join("\n\n")));
+  }
+
+  // The News Lens — prefer JSON-LD; HTML paragraphs as backup
+  if (host.includes("thenewslens.com")) {
+    const section = $(
+      ".js-article-section-wrapper, .article-page-wrapper, article"
+    )
+      .first()
+      .clone();
+    section
+      .find(
+        "script, style, nav, aside, footer, .ad-content, .box-body, .related, .share, button, form, .subscription"
+      )
+      .remove();
+    const viaP = joinMeaningful($, section, "p")
+      .split(/\n\n+/)
+      .filter((p) => !/投稿請寄到|oped@thenewslens|一稿多投|來信請附上投稿人/.test(p))
+      .join("\n\n");
+    candidates.push(normalizeParagraphs(viaP));
+  }
+
+  // UDN
+  if (host.includes("udn.com")) {
+    const ed = $(".article-content__editor, .article-content").first().clone();
+    ed.find("script, style, figure, .video-container, .social, .share").remove();
+    candidates.push(joinMeaningful($, ed, "p"));
+    candidates.push(
+      normalizeParagraphs(
+        ed
+          .text()
+          .replace(/\s+/g, " ")
+          .replace(/twitter loading\.\.\./gi, "")
+          .trim()
+      )
+    );
+  }
+
+  // LTN (often 403 from datacenter — still try)
+  if (host.includes("ltn.com.tw")) {
+    for (const sel of [
+      "#newscotent",
+      "#newscontent",
+      ".text",
+      ".article-text",
+      ".boxTitle .text",
+      "[data-desc=content]",
+      ".whitecon .text",
+    ]) {
+      const el = $(sel).first().clone();
+      if (!el.length) continue;
+      el.find("script, style, .ad, .related, .app-ad").remove();
+      const viaP = joinMeaningful($, el, "p");
+      if (viaP) candidates.push(viaP);
+      const raw = normalizeParagraphs(el.text().replace(/\s+/g, " "));
+      if (raw.length > 80) candidates.push(raw);
+    }
+  }
+
+  // Generic fallbacks (skip when site-specific selectors already ran)
+  const knownHost =
+    host.includes("cna.com.tw") ||
+    host.includes("thenewslens.com") ||
+    host.includes("udn.com") ||
+    host.includes("ltn.com.tw");
+  if (!knownHost) {
+    for (const sel of [
+      "[itemprop=articleBody]",
+      "article",
+      ".article-content",
+      ".article-body",
+      ".post-content",
+      ".story-content",
+      "main",
+    ]) {
+      const el = $(sel).first().clone();
+      if (!el.length) continue;
+      el.find(
+        "script, style, nav, aside, footer, header, .ad, .share, .related, .social, form, button"
+      ).remove();
+      const viaP = joinMeaningful($, el, "p");
+      if (viaP.length > 80) candidates.push(viaP);
+    }
+  }
+
+  // Drop submission / chrome boilerplate that sometimes outranks real body length
+  const cleaned = candidates.map((c) =>
+    normalizeParagraphs(
+      c
+        .split(/\n\n+/)
+        .filter(
+          (p) =>
+            !/投稿請寄到|oped@thenewslens|一稿多投|來信請附上投稿人|twitter loading/i.test(
+              p
+            )
+        )
+        .join("\n\n")
+    )
+  );
+
+  return longestText(cleaned);
+}
+
+export type ScrapeResult = {
+  body: string;
+  scraped: boolean;
+  status?: number;
+};
+
+/**
+ * Best-effort article body scrape. Never invents text.
+ * Returns empty body when the page is blocked or has no extractable content.
+ */
+export async function scrapeArticle(url: string): Promise<ScrapeResult> {
+  const cacheKey = `news:scrape:${url}`;
+  const cached = getCached<ScrapeResult>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const { ok, status, html } = await fetchHtml(url, {
+      userAgent: UA_CHROME,
+      acceptLanguage: "zh-TW,zh;q=0.9,en;q=0.8",
+    });
+    if (!ok || !html || html.length < 200) {
+      const result: ScrapeResult = { body: "", scraped: false, status };
+      return setCache(cacheKey, result, BODY_CACHE_TTL);
+    }
+    const body = scrapeFromHtml(url, html);
+    const result: ScrapeResult = {
+      body,
+      scraped: body.length >= 80,
+      status,
+    };
+    return setCache(cacheKey, result, BODY_CACHE_TTL);
+  } catch (err) {
+    console.error(`[news] scrape failed for ${url}:`, err);
+    const result: ScrapeResult = { body: "", scraped: false };
+    return setCache(cacheKey, result, BODY_CACHE_TTL / 2);
+  }
+}
+
+function buildNewsBody(opts: {
+  scrapedBody: string;
+  scraped: boolean;
+  preview: string;
+  url: string;
+  status?: number;
+}): string {
+  const { scrapedBody, scraped, preview, url, status } = opts;
+  const parts: string[] = [];
+
+  if (scraped && scrapedBody) {
+    parts.push(scrapedBody);
+  } else {
+    const fallback = longestText([scrapedBody, preview]);
+    if (fallback) parts.push(fallback);
+    const reason =
+      status === 403
+        ? "原文網站拒絕此環境的抓取（HTTP 403）"
+        : status && status >= 400
+          ? `原文網站回傳 HTTP ${status}`
+          : "無法取得完整內文";
+    parts.push(
+      `\n※ ${reason}，以上為 RSS／預覽可見文字，請至原文查看完整報導。`
+    );
+  }
+
+  if (url && url !== "#") {
+    parts.push(`\n原文連結：${url}`);
+  }
+  return parts.join("\n").trim();
+}
+
 export const newsSource: Source = {
   id: "news",
   label: "新聞",
@@ -130,16 +395,43 @@ export const newsSource: Source = {
     return setCache(cacheKey, items, CACHE_TTL);
   },
   async fetchPost(params) {
+    const url = (params.url || "").trim();
+    if (!url || url === "#") return null;
+
     const feed = await this.fetchFeed(40);
     const item =
       feed.find((x) => x.detailParams?.id === params.id) ||
-      (params.url
-        ? feed.find((x) => x.url === params.url)
-        : undefined);
-    if (!item) return null;
+      feed.find((x) => x.url === url) ||
+      undefined;
+
+    const scrape = await scrapeArticle(url);
+    const title = item?.title || "新聞";
+    const preview = item?.preview || "";
+
+    const body = buildNewsBody({
+      scrapedBody: scrape.body,
+      scraped: scrape.scraped,
+      preview,
+      url,
+      status: scrape.status,
+    });
+
     const post: Post = {
-      ...item,
-      body: `${item.preview}\n\n原文連結：${item.url}`,
+      id: item?.id || `news:${Buffer.from(url).toString("base64url").slice(0, 24)}`,
+      source: "news",
+      title,
+      author: item?.author || "新聞",
+      channel: item?.channel || "新聞",
+      createdAt: item?.createdAt || new Date().toISOString(),
+      preview: preview || body.slice(0, 180),
+      body,
+      url,
+      comments: [],
+      detailParams: {
+        source: "news",
+        id: item?.detailParams?.id || params.id || "",
+        url,
+      },
     };
     return post;
   },

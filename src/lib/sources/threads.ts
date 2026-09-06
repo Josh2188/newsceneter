@@ -1,7 +1,8 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 import { getCached, setCache } from "../cache";
-import type { FeedItem, Post, Source } from "./types";
+import { UA_CHROME, UA_GOOGLEBOT } from "../html";
+import type { Comment, FeedItem, Post, Source } from "./types";
 import bundledCacheImport from "../../data/threads-cache.json";
 
 export const CACHE_TTL = 60_000;
@@ -16,11 +17,6 @@ export const DEFAULT_USERS = [
   "gamer_com_tw",
   "dating.pettrainer",
 ];
-
-const UA_CHROME =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
-const UA_GOOGLEBOT =
-  "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)";
 
 export type ThreadsCacheFile = {
   updatedAt: string;
@@ -163,6 +159,202 @@ export function parseFallback(html: string, fallbackUser: string): RawPost[] {
     });
   }
   return out;
+}
+
+
+/** Parse reply/root posts from a Threads post-detail HTML blob. */
+export function parsePostPageData(
+  html: string,
+  rootCode: string,
+  fallbackUser: string
+): { rootText: string; comments: Comment[]; root?: RawPost } {
+  const comments: Comment[] = [];
+  let rootText = "";
+  let root: RawPost | undefined;
+
+  const tryParseEdges = (edges: Array<{ node?: { thread_items?: unknown[] } }>) => {
+    const posts: Array<{
+      code: string;
+      username: string;
+      text: string;
+      likeCount?: number;
+      commentCount?: number;
+      takenAt?: number;
+      isReply?: boolean;
+    }> = [];
+    const seen = new Set<string>();
+    for (const edge of edges || []) {
+      const items = (edge.node?.thread_items || []) as Array<{
+        post?: Record<string, unknown>;
+      }>;
+      for (const item of items) {
+        const post = item?.post;
+        if (!post) continue;
+        const code = typeof post.code === "string" ? post.code : "";
+        if (!code || seen.has(code)) continue;
+        const caption = post.caption as { text?: string } | null | undefined;
+        const text = (caption?.text || "").trim();
+        if (!text) continue;
+        const userObj = post.user as { username?: string } | null | undefined;
+        const username = userObj?.username || fallbackUser;
+        const tpa = post.text_post_app_info as
+          | { direct_reply_count?: number; is_reply?: boolean }
+          | null
+          | undefined;
+        seen.add(code);
+        posts.push({
+          code,
+          username,
+          text,
+          likeCount:
+            typeof post.like_count === "number" ? post.like_count : undefined,
+          commentCount:
+            typeof tpa?.direct_reply_count === "number"
+              ? tpa.direct_reply_count
+              : undefined,
+          takenAt: typeof post.taken_at === "number" ? post.taken_at : undefined,
+          isReply: Boolean(tpa?.is_reply) || code !== rootCode,
+        });
+      }
+    }
+    return posts;
+  };
+
+  // Profile-style mediaData
+  const mediaMarker = '"mediaData":';
+  const mediaStart = html.indexOf(mediaMarker);
+  if (mediaStart >= 0) {
+    const objStr = extractJsonObject(html, mediaStart + mediaMarker.length - 1);
+    if (objStr) {
+      try {
+        const data = JSON.parse(objStr) as {
+          edges?: Array<{ node?: { thread_items?: unknown[] } }>;
+        };
+        const posts = tryParseEdges(data.edges || []);
+        for (const p of posts) {
+          if (p.code === rootCode || (!root && !p.isReply)) {
+            rootText = p.text;
+            root = {
+              code: p.code,
+              username: p.username,
+              text: p.text,
+              likeCount: p.likeCount,
+              commentCount: p.commentCount,
+              takenAt: p.takenAt,
+            };
+          } else {
+            comments.push({
+              id: `threads-reply-${p.code}`,
+              author: p.username,
+              body: p.text,
+              type: "comment",
+            });
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  // Post-page embedded payload: "data":{"data":{"edges":[...
+  if (!rootText || comments.length === 0) {
+    const dataMarker = '"data":{"data":';
+    let searchFrom = 0;
+    while (searchFrom < html.length) {
+      const idx = html.indexOf(dataMarker, searchFrom);
+      if (idx < 0) break;
+      const objStr = extractJsonObject(html, idx + '"data":'.length);
+      searchFrom = idx + dataMarker.length;
+      if (!objStr || objStr.length < 100) continue;
+      if (!objStr.includes("thread_items") && !objStr.includes('"caption"')) {
+        continue;
+      }
+      try {
+        const parsed = JSON.parse(objStr) as {
+          data?: { edges?: Array<{ node?: { thread_items?: unknown[] } }> };
+          edges?: Array<{ node?: { thread_items?: unknown[] } }>;
+        };
+        const edges = parsed.data?.edges || parsed.edges || [];
+        if (!edges.length) continue;
+        const posts = tryParseEdges(edges);
+        if (!posts.length) continue;
+        for (const p of posts) {
+          if (p.code === rootCode || (!root && !p.isReply)) {
+            if (p.text.length > rootText.length) {
+              rootText = p.text;
+              root = {
+                code: p.code,
+                username: p.username,
+                text: p.text,
+                likeCount: p.likeCount,
+                commentCount: p.commentCount,
+                takenAt: p.takenAt,
+              };
+            }
+          } else if (!comments.some((c) => c.id === `threads-reply-${p.code}`)) {
+            comments.push({
+              id: `threads-reply-${p.code}`,
+              author: p.username,
+              body: p.text,
+              type: "comment",
+            });
+          }
+        }
+        if (rootText) break;
+      } catch {
+        /* try next */
+      }
+    }
+  }
+
+  // Regex fallback for captions on post page
+  if (!rootText) {
+    const fallback = parseFallback(html, fallbackUser);
+    const match =
+      fallback.find((p) => p.code === rootCode) || fallback[0];
+    if (match) {
+      rootText = match.text;
+      root = match;
+    }
+  }
+
+  return { rootText, comments, root };
+}
+
+export async function fetchPostHtml(
+  username: string,
+  code: string
+): Promise<string> {
+  const url = `https://www.threads.com/@${encodeURIComponent(username)}/post/${encodeURIComponent(code)}`;
+  const attempts = [UA_GOOGLEBOT, UA_CHROME];
+  let lastStatus = 0;
+  for (const ua of attempts) {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": ua,
+        Accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+        Referer: "https://www.threads.com/",
+      },
+      redirect: "follow",
+      next: { revalidate: 0 },
+    });
+    lastStatus = res.status;
+    if (!res.ok) continue;
+    const html = await res.text();
+    if (
+      html.includes("thread_items") ||
+      html.includes("mediaData") ||
+      html.includes('"caption"')
+    ) {
+      return html;
+    }
+  }
+  throw new Error(
+    `Threads post HTTP ${lastStatus} or empty for @${username}/post/${code}`
+  );
 }
 
 export function toFeedItem(raw: RawPost): FeedItem {
@@ -384,59 +576,105 @@ export const threadsSource: Source = {
     const id = params.id;
     if (!id) return null;
 
+    const user = (params.user || "").replace(/^@/, "");
+    let baseItem: FeedItem | null = null;
+    let bodyText = "";
+    let comments: Comment[] = [];
+    let scrapeNote: string | null = null;
+
+    // Memory / bundled body cache first (fast path for caption)
     const bodyCached = getCached<{ text: string; item: FeedItem }>(
       `threads:body:${id}`
     );
     if (bodyCached) {
-      return {
-        ...bodyCached.item,
-        body: bodyCached.text,
-      } satisfies Post;
+      baseItem = bodyCached.item;
+      bodyText = bodyCached.text;
     }
 
-    // Try bundled cache bodies before live re-fetch
-    const bundled = loadBundledCache();
-    if (bundled) {
-      const text = bundled.bodies?.[id];
+    if (!baseItem) {
+      const bundled = loadBundledCache();
+      if (bundled) {
+        const text = bundled.bodies?.[id];
+        const item =
+          bundled.items.find((x) => x.detailParams?.id === id) ||
+          bundled.items.find((x) => x.id === `threads:${id}`);
+        if (item) {
+          baseItem = item;
+          bodyText = text || item.preview;
+        }
+      }
+    }
+
+    if (!baseItem) {
+      const feed = await this.fetchFeed(40);
       const item =
-        bundled.items.find((x) => x.detailParams?.id === id) ||
-        bundled.items.find((x) => x.id === `threads:${id}`);
-      if (item && text) {
-        return { ...item, body: text } satisfies Post;
-      }
+        feed.find((x) => x.detailParams?.id === id) ||
+        feed.find((x) => x.id === `threads:${id}`);
       if (item) {
-        return { ...item, body: item.preview } satisfies Post;
-      }
-    }
-
-    // Re-fetch feed (and thus profiles) then look up
-    const feed = await this.fetchFeed(40);
-    const item =
-      feed.find((x) => x.detailParams?.id === id) ||
-      feed.find((x) => x.id === `threads:${id}`);
-    if (!item) {
-      const user = params.user;
-      if (user) {
-        const userItems = await fetchUserPosts(user);
-        const found = userItems.find((x) => x.detailParams?.id === id);
+        baseItem = item;
         const body = getCached<{ text: string; item: FeedItem }>(
           `threads:body:${id}`
         );
-        if (found && body) {
-          return { ...found, body: body.text } satisfies Post;
-        }
+        bodyText = body?.text || item.preview;
+      } else if (user) {
+        const userItems = await fetchUserPosts(user);
+        const found = userItems.find((x) => x.detailParams?.id === id);
         if (found) {
-          return { ...found, body: found.preview } satisfies Post;
+          baseItem = found;
+          const body = getCached<{ text: string; item: FeedItem }>(
+            `threads:body:${id}`
+          );
+          bodyText = body?.text || found.preview;
         }
       }
-      return null;
     }
-    const body = getCached<{ text: string; item: FeedItem }>(
-      `threads:body:${id}`
-    );
+
+    if (!baseItem) return null;
+
+    const username = user || baseItem.author || baseItem.detailParams?.user || "";
+
+    // Live scrape post page for fuller caption + replies
+    if (username) {
+      try {
+        const html = await fetchPostHtml(username, id);
+        const parsed = parsePostPageData(html, id, username);
+        if (parsed.rootText && parsed.rootText.length >= bodyText.length) {
+          bodyText = parsed.rootText;
+          setCache(
+            `threads:body:${id}`,
+            { text: bodyText, item: baseItem },
+            CACHE_TTL * 2
+          );
+        }
+        comments = parsed.comments;
+        if (
+          comments.length === 0 &&
+          (baseItem.engagement?.comments || 0) > 0
+        ) {
+          scrapeNote =
+            "此貼文頁面未取得公開回應（可能被封鎖或需登入），請至原文查看。";
+        }
+      } catch (err) {
+        console.warn(`[threads] post scrape @${username}/${id} failed:`, err);
+        scrapeNote =
+          "Threads 貼文頁面無法抓取回應（可能被封鎖），內文來自快取／預覽，請至原文查看。";
+        comments = [];
+      }
+    } else {
+      comments = [];
+      scrapeNote =
+        "無法解析 Threads 帳號，回應未取得，請至原文查看。";
+    }
+
+    let body = bodyText || baseItem.preview;
+    if (scrapeNote && comments.length === 0) {
+      body = `${body}\n\n※ ${scrapeNote}`;
+    }
+
     return {
-      ...item,
-      body: body?.text || item.preview,
+      ...baseItem,
+      body,
+      comments,
     } satisfies Post;
   },
 };

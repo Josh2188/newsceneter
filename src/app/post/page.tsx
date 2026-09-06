@@ -15,6 +15,16 @@ function first(v: string | string[] | undefined): string | undefined {
   return v;
 }
 
+function emptyCommentsCopy(source: SourceId): string {
+  if (source === "news") {
+    return "此來源無公開回應／請至原文查看";
+  }
+  if (source === "threads") {
+    return "目前沒有可顯示的回應（可能被封鎖或需至原文查看）";
+  }
+  return "目前沒有回應";
+}
+
 export default async function PostPage({
   searchParams,
 }: {
@@ -84,15 +94,32 @@ export default async function PostPage({
         )}
       </div>
 
-      <div className="prose-bbs mb-8 rounded-lg border border-river-border bg-river-panel/60 p-4">
+      <div className="prose-bbs mb-8 rounded-lg border border-river-border bg-river-panel/60 p-4 whitespace-pre-wrap">
         {post.body}
       </div>
 
-      {comments.length > 0 && (
-        <section>
-          <h2 className="mb-3 font-mono text-sm font-semibold text-river-muted">
-            回應（{comments.length}）
-          </h2>
+      <section>
+        <h2 className="mb-3 font-mono text-sm font-semibold text-river-muted">
+          回應{comments.length > 0 ? `（${comments.length}）` : ""}
+        </h2>
+        {comments.length === 0 ? (
+          <p className="rounded border border-dashed border-river-border/80 bg-river-panel/30 px-3 py-4 text-sm text-river-muted">
+            {emptyCommentsCopy(post.source)}
+            {post.url && post.url !== "#" && (
+              <>
+                {" "}
+                <a
+                  href={post.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-river-accent hover:underline"
+                >
+                  前往原文 ↗
+                </a>
+              </>
+            )}
+          </p>
+        ) : (
           <ul className="space-y-2">
             {comments.map((c) => (
               <li
@@ -114,7 +141,9 @@ export default async function PostPage({
                       ? "噓"
                       : c.type === "arrow"
                         ? "→"
-                        : "·"}
+                        : c.type === "comment"
+                          ? "·"
+                          : "·"}
                 </span>{" "}
                 <span className="text-river-accent">{c.author}</span>
                 <span className="text-river-text/85">: {c.body}</span>
@@ -124,8 +153,8 @@ export default async function PostPage({
               </li>
             ))}
           </ul>
-        </section>
-      )}
+        )}
+      </section>
     </article>
   );
 }
