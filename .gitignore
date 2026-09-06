@@ -1,0 +1,12 @@
+node_modules
+.next
+out
+build
+coverage
+.DS_Store
+*.pem
+*.tsbuildinfo
+next-env.d.ts
+.vercel
+.pnp
+.pnp.js
