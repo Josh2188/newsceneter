@@ -9,6 +9,12 @@ export const dynamic = "force-dynamic";
 
 const VALID: SourceId[] = ["ptt", "threads", "news"];
 
+const GLOW: Record<string, string> = {
+  ptt: "source-glow-ptt",
+  threads: "source-glow-threads",
+  news: "source-glow-news",
+};
+
 type SearchParams = Record<string, string | string[] | undefined>;
 
 function first(v: string | string[] | undefined): string | undefined {
@@ -47,7 +53,7 @@ export default async function PostPage({
   const comments = post.comments || [];
 
   return (
-    <article>
+    <article className="fade-rise">
       <MarkRead id={post.id} />
       <Link
         href="/"
@@ -56,47 +62,53 @@ export default async function PostPage({
         ← 返回河道
       </Link>
 
-      <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-river-muted">
-        <SourceBadge source={post.source} />
-        <span>{post.channel}</span>
-        {post.isStub && (
-          <span className="rounded border border-river-warn/40 bg-river-warn/10 px-1.5 py-0.5 text-river-warn">
-            示範資料
-          </span>
-        )}
+      <div
+        className={`glass-panel mb-5 overflow-hidden rounded-2xl ${GLOW[post.source] || ""}`}
+      >
+        <div className="p-4 sm:p-5">
+          <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-river-muted">
+            <SourceBadge source={post.source} />
+            <span>{post.channel}</span>
+            {post.isStub && (
+              <span className="rounded border border-river-warn/40 bg-river-warn/10 px-1.5 py-0.5 text-river-warn">
+                示範資料
+              </span>
+            )}
+          </div>
+
+          <h1 className="mb-3 text-xl font-bold leading-snug text-river-text sm:text-2xl">
+            {post.title}
+          </h1>
+
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-river-muted">
+            <span>作者 {post.author}</span>
+            <span>{formatAbsolute(post.createdAt)}（台北）</span>
+            {post.engagement?.pushes !== undefined && (
+              <span>
+                推 {post.engagement.pushes}
+                {post.engagement.boos !== undefined
+                  ? ` · 噓 ${post.engagement.boos}`
+                  : ""}
+                {post.engagement.arrows !== undefined
+                  ? ` · → ${post.engagement.arrows}`
+                  : ""}
+              </span>
+            )}
+            {post.url && post.url !== "#" && (
+              <a
+                href={post.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-river-accent hover:underline"
+              >
+                原文連結 ↗
+              </a>
+            )}
+          </div>
+        </div>
       </div>
 
-      <h1 className="mb-3 text-xl font-bold leading-snug text-river-text">
-        {post.title}
-      </h1>
-
-      <div className="mb-5 flex flex-wrap gap-x-4 gap-y-1 border-b border-river-border pb-4 text-xs text-river-muted">
-        <span>作者 {post.author}</span>
-        <span>{formatAbsolute(post.createdAt)}（台北）</span>
-        {post.engagement?.pushes !== undefined && (
-          <span>
-            推 {post.engagement.pushes}
-            {post.engagement.boos !== undefined
-              ? ` · 噓 ${post.engagement.boos}`
-              : ""}
-            {post.engagement.arrows !== undefined
-              ? ` · → ${post.engagement.arrows}`
-              : ""}
-          </span>
-        )}
-        {post.url && post.url !== "#" && (
-          <a
-            href={post.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-river-accent hover:underline"
-          >
-            原文連結 ↗
-          </a>
-        )}
-      </div>
-
-      <div className="prose-bbs mb-8 rounded-lg border border-river-border bg-river-panel/60 p-4 whitespace-pre-wrap">
+      <div className="prose-bbs glass-panel mb-8 rounded-xl p-4 whitespace-pre-wrap">
         {post.body}
       </div>
 
@@ -112,7 +124,7 @@ export default async function PostPage({
                 href={src}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="block overflow-hidden rounded-lg border border-river-border bg-river-panel/40"
+                className="glass-panel card-lift block overflow-hidden rounded-xl"
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -134,7 +146,7 @@ export default async function PostPage({
           回應{comments.length > 0 ? `（${comments.length}）` : ""}
         </h2>
         {comments.length === 0 ? (
-          <p className="rounded border border-dashed border-river-border/80 bg-river-panel/30 px-3 py-4 text-sm text-river-muted">
+          <p className="rounded-xl border border-dashed border-river-border/80 bg-river-panel/40 px-3 py-4 text-sm text-river-muted">
             {emptyCommentsCopy(post.source)}
             {post.url && post.url !== "#" && (
               <>
@@ -155,14 +167,14 @@ export default async function PostPage({
             {comments.map((c) => (
               <li
                 key={c.id}
-                className="rounded border border-river-border/80 bg-river-panel/40 px-3 py-2 font-mono text-[12px]"
+                className="glass-panel rounded-lg px-3 py-2 font-mono text-[12px]"
               >
                 <span
                   className={
                     c.type === "push"
                       ? "text-river-ptt"
                       : c.type === "boo"
-                        ? "text-red-300"
+                        ? "text-red-500"
                         : "text-river-muted"
                   }
                 >

@@ -10,19 +10,23 @@ const config: Config = {
     extend: {
       colors: {
         river: {
-          bg: "#0c0e12",
-          panel: "#14181f",
-          border: "#252b36",
-          muted: "#8b95a8",
-          text: "#e8ecf2",
-          accent: "#5eead4",
-          warn: "#fbbf24",
-          ptt: "#86efac",
-          threads: "#c4b5fd",
-          facebook: "#93c5fd",
-          instagram: "#f9a8d4",
-          news: "#fdba74",
+          bg: "rgb(var(--river-bg) / <alpha-value>)",
+          panel: "rgb(var(--river-panel) / <alpha-value>)",
+          border: "rgb(var(--river-border) / <alpha-value>)",
+          muted: "rgb(var(--river-muted) / <alpha-value>)",
+          text: "rgb(var(--river-text) / <alpha-value>)",
+          accent: "rgb(var(--river-accent) / <alpha-value>)",
+          warn: "rgb(var(--river-warn) / <alpha-value>)",
+          ptt: "rgb(var(--river-ptt) / <alpha-value>)",
+          threads: "rgb(var(--river-threads) / <alpha-value>)",
+          facebook: "rgb(var(--river-facebook) / <alpha-value>)",
+          instagram: "rgb(var(--river-instagram) / <alpha-value>)",
+          news: "rgb(var(--river-news) / <alpha-value>)",
         },
+      },
+      maxWidth: {
+        "3xl": "48rem",
+        "4xl": "56rem",
       },
       fontFamily: {
         mono: [
@@ -35,6 +39,24 @@ const config: Config = {
           "Courier New",
           "monospace",
         ],
+      },
+      keyframes: {
+        shimmer: {
+          "0%, 100%": { backgroundPosition: "0% center" },
+          "50%": { backgroundPosition: "100% center" },
+        },
+        float: {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(-6px)" },
+        },
+      },
+      animation: {
+        shimmer: "shimmer 6s ease-in-out infinite",
+        float: "float 4.5s ease-in-out infinite",
+      },
+      boxShadow: {
+        glow: "0 0 28px -8px var(--river-glow)",
+        "glow-lg": "0 0 48px -12px var(--river-glow)",
       },
     },
   },

@@ -31,8 +31,8 @@ export function FilterChips({
             onClick={() => onChange(c.id)}
             className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition ${
               active
-                ? "border-river-accent bg-river-accent/15 text-river-accent"
-                : "border-river-border bg-river-panel text-river-muted hover:border-river-muted hover:text-river-text"
+                ? "border-river-accent bg-river-accent/15 text-river-accent shadow-glow"
+                : "border-river-border bg-river-panel/80 text-river-muted hover:border-river-muted hover:text-river-text"
             }`}
           >
             {c.label}

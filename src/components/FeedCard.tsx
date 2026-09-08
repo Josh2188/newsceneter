@@ -8,18 +8,28 @@ import { detailHref } from "@/lib/confluence";
 import { formatTime } from "@/lib/format";
 import { SourceBadge } from "./SourceBadge";
 
+const GLOW: Record<string, string> = {
+  ptt: "source-glow-ptt",
+  threads: "source-glow-threads",
+  news: "source-glow-news",
+};
+
 export function FeedCard({
   item,
   confluence,
   siblings,
   isRead,
   onOpen,
+  featured,
+  index = 0,
 }: {
   item: FeedItem;
   confluence?: ConfluenceGroup | null;
   siblings?: FeedItem[];
   isRead?: boolean;
   onOpen?: (id: string) => void;
+  featured?: boolean;
+  index?: number;
 }) {
   const [open, setOpen] = useState(false);
   const eng = item.engagement;
@@ -31,20 +41,22 @@ export function FeedCard({
 
   const thumb = item.images?.[0];
   const groupSize = confluence?.memberIds.length ?? 0;
-  const others =
-    siblings?.filter((s) => s.id !== item.id) ||
-    [];
+  const others = siblings?.filter((s) => s.id !== item.id) || [];
+  const delay = Math.min(index, 12) * 45;
 
   return (
     <div
-      className={`rounded-lg border border-river-border bg-river-panel/80 transition hover:border-river-accent/40 hover:bg-river-panel ${
-        isRead ? "opacity-[0.55]" : ""
+      className={`glass-panel card-lift fade-rise overflow-hidden rounded-xl ${
+        GLOW[item.source] || ""
+      } ${isRead ? "opacity-[0.55]" : ""} ${
+        featured ? "ring-1 ring-river-accent/25 shadow-glow" : ""
       }`}
+      style={{ animationDelay: `${delay}ms` }}
     >
       <Link
         href={detailHref(item)}
         onClick={() => onOpen?.(item.id)}
-        className="block p-3.5"
+        className={`block ${featured ? "p-4 sm:p-5" : "p-3.5"}`}
       >
         <div className="mb-2 flex items-center gap-2 text-xs text-river-muted">
           <SourceBadge source={item.source} />
@@ -60,10 +72,18 @@ export function FeedCard({
         </div>
         <div className={thumb ? "flex gap-3" : undefined}>
           <div className="min-w-0 flex-1">
-            <h2 className="mb-1.5 text-[15px] font-semibold leading-snug text-river-text">
+            <h2
+              className={`mb-1.5 font-semibold leading-snug text-river-text ${
+                featured ? "text-lg sm:text-xl" : "text-[15px]"
+              }`}
+            >
               {item.title}
             </h2>
-            <p className="line-clamp-2 text-sm leading-relaxed text-river-muted">
+            <p
+              className={`leading-relaxed text-river-muted ${
+                featured ? "line-clamp-3 text-[14px]" : "line-clamp-2 text-sm"
+              }`}
+            >
               {item.preview}
             </p>
           </div>
@@ -74,7 +94,9 @@ export function FeedCard({
               alt=""
               loading="lazy"
               referrerPolicy="no-referrer"
-              className="h-16 w-16 shrink-0 rounded-md border border-river-border object-cover"
+              className={`shrink-0 rounded-lg border border-river-border/60 object-cover shadow-md ${
+                featured ? "h-24 w-24 sm:h-28 sm:w-28" : "h-16 w-16"
+              }`}
             />
           )}
         </div>
@@ -87,7 +109,7 @@ export function FeedCard({
       </Link>
 
       {groupSize >= 2 && (
-        <div className="border-t border-river-border/60 px-3.5 py-2">
+        <div className="border-t border-river-border/40 px-3.5 py-2">
           <button
             type="button"
             onClick={(e) => {
@@ -128,21 +150,25 @@ export function ImageWallCard({
   item,
   isRead,
   onOpen,
+  index = 0,
 }: {
   item: FeedItem;
   isRead?: boolean;
   onOpen?: (id: string) => void;
+  index?: number;
 }) {
   const thumb = item.images?.[0];
   if (!thumb) return null;
+  const delay = Math.min(index, 12) * 40;
 
   return (
     <Link
       href={detailHref(item)}
       onClick={() => onOpen?.(item.id)}
-      className={`group relative block overflow-hidden rounded-lg border border-river-border bg-river-panel transition hover:border-river-accent/50 ${
-        isRead ? "opacity-[0.55]" : ""
-      }`}
+      className={`group relative block overflow-hidden rounded-xl border border-river-border/50 bg-river-panel card-lift fade-rise ${
+        GLOW[item.source] || ""
+      } ${isRead ? "opacity-[0.55]" : ""}`}
+      style={{ animationDelay: `${delay}ms` }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img

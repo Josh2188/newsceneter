@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { FeedItem } from "@/lib/sources/types";
 import { clusterConfluence, detailHref } from "@/lib/confluence";
 import { computeThermometer } from "@/lib/thermometer";
+import { pickHeroItem, pickTickerItems } from "@/lib/rank";
 import {
   clearReadIds,
   loadReadIds,
@@ -14,6 +15,10 @@ import { FeedCard, ImageWallCard } from "./FeedCard";
 import { FilterChips, type FilterId } from "./FilterChips";
 import { RiverThermometer } from "./RiverThermometer";
 import { RiverToolbar } from "./RiverToolbar";
+import { HeroSpotlight } from "./HeroSpotlight";
+import { HotTicker } from "./HotTicker";
+import { NowRiver } from "./NowRiver";
+import { CinematicDrift, useCinematicPref } from "./CinematicDrift";
 
 type RiverErr = { source: string; message: string };
 
@@ -30,6 +35,8 @@ export function RiverFeed() {
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [imageWall, setImageWall] = useState(false);
   const [diving, setDiving] = useState(false);
+  const [, setCinematicPref] = useCinematicPref();
+  const [driftOpen, setDriftOpen] = useState(false);
 
   useEffect(() => {
     setReadIds(loadReadIds());
@@ -82,6 +89,21 @@ export function RiverFeed() {
     return list;
   }, [items, unreadOnly, readIds, imageWall]);
 
+  const hero = useMemo(() => {
+    if (imageWall || filtered.length === 0) return null;
+    return pickHeroItem(filtered, confluenceMap);
+  }, [filtered, confluenceMap, imageWall]);
+
+  const tickerItems = useMemo(
+    () => pickTickerItems(items, confluenceMap, 8),
+    [items, confluenceMap],
+  );
+
+  const listItems = useMemo(() => {
+    if (!hero) return filtered;
+    return filtered.filter((it) => it.id !== hero.id);
+  }, [filtered, hero]);
+
   const handleOpen = useCallback((id: string) => {
     const next = markRead(id);
     setReadIds(new Set(next));
@@ -103,28 +125,54 @@ export function RiverFeed() {
     setTimeout(() => setDiving(false), 600);
   }, [filtered, handleOpen, router]);
 
+  const openDrift = useCallback(() => {
+    setDriftOpen(true);
+    setCinematicPref(true);
+  }, [setCinematicPref]);
+
+  const closeDrift = useCallback(() => {
+    setDriftOpen(false);
+    setCinematicPref(false);
+  }, [setCinematicPref]);
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement)?.isContentEditable) {
+      if (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        (e.target as HTMLElement)?.isContentEditable
+      ) {
         return;
       }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (driftOpen) return; // CinematicDrift handles its own keys
       if (e.key === "r" || e.key === "R") {
         e.preventDefault();
         handleRandomDive();
       } else if (e.key === "g" || e.key === "G") {
         e.preventDefault();
         setImageWall((v) => !v);
+      } else if (e.key === "d" || e.key === "D") {
+        e.preventDefault();
+        openDrift();
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [handleRandomDive]);
+  }, [handleRandomDive, driftOpen, openDrift]);
 
   return (
     <div className="space-y-4">
+      {!loading && !error && items.length > 0 && (
+        <NowRiver stats={thermo} topItem={tickerItems[0] || items[0]} />
+      )}
+
       <FilterChips value={filter} onChange={setFilter} />
+
+      {!loading && !error && tickerItems.length > 0 && (
+        <HotTicker items={tickerItems} onOpen={handleOpen} />
+      )}
 
       {!loading && !error && items.length > 0 && (
         <RiverThermometer stats={thermo} />
@@ -138,6 +186,8 @@ export function RiverFeed() {
         imageWall={imageWall}
         onImageWallChange={setImageWall}
         diving={diving}
+        cinematic={driftOpen}
+        onCinematicChange={(v) => (v ? openDrift() : closeDrift())}
       />
 
       {sourceErrors.length > 0 && !loading && (
@@ -173,14 +223,14 @@ export function RiverFeed() {
           {Array.from({ length: 6 }).map((_, i) => (
             <div
               key={i}
-              className="h-28 animate-pulse rounded-lg border border-river-border bg-river-panel/50"
+              className="h-28 animate-pulse rounded-xl border border-river-border bg-river-panel/50"
             />
           ))}
         </div>
       )}
 
       {!loading && error && (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-600">
           {error}
           <button
             type="button"
@@ -202,9 +252,18 @@ export function RiverFeed() {
         </div>
       )}
 
-      {!loading && !error && filtered.length > 0 && !imageWall && (
+      {!loading && !error && hero && !imageWall && (
+        <HeroSpotlight
+          item={hero}
+          confluence={confluenceMap.get(hero.id) || null}
+          isRead={readIds.has(hero.id)}
+          onOpen={handleOpen}
+        />
+      )}
+
+      {!loading && !error && listItems.length > 0 && !imageWall && (
         <ul className="space-y-3">
-          {filtered.map((item) => {
+          {listItems.map((item, idx) => {
             const group = confluenceMap.get(item.id) || null;
             const siblings = group
               ? group.memberIds
@@ -219,6 +278,8 @@ export function RiverFeed() {
                   siblings={siblings}
                   isRead={readIds.has(item.id)}
                   onOpen={handleOpen}
+                  featured={idx === 0 && !hero}
+                  index={idx}
                 />
               </li>
             );
@@ -228,12 +289,13 @@ export function RiverFeed() {
 
       {!loading && !error && filtered.length > 0 && imageWall && (
         <div className="columns-2 gap-3 sm:columns-3">
-          {filtered.map((item) => (
+          {filtered.map((item, idx) => (
             <div key={item.id} className="mb-3 break-inside-avoid">
               <ImageWallCard
                 item={item}
                 isRead={readIds.has(item.id)}
                 onOpen={handleOpen}
+                index={idx}
               />
             </div>
           ))}
@@ -252,6 +314,14 @@ export function RiverFeed() {
           }).format(new Date(fetchedAt))}{" "}
           （台北時間）
         </p>
+      )}
+
+      {driftOpen && (
+        <CinematicDrift
+          items={filtered.length > 0 ? filtered : items}
+          onExit={closeDrift}
+          onOpen={handleOpen}
+        />
       )}
     </div>
   );
