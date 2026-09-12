@@ -1,5 +1,5 @@
 import * as cheerio from "cheerio";
-import { getCached, setCache } from "../cache";
+import { durableCached, getCached } from "../cache";
 import {
   fetchHtml,
   longestText,
@@ -13,8 +13,8 @@ import {
 } from "../images";
 import type { FeedItem, Post, Source } from "./types";
 
-const CACHE_TTL = 60_000;
-const BODY_CACHE_TTL = 120_000;
+const FEED_REVALIDATE = 60;
+const SCRAPE_REVALIDATE = 8 * 60;
 
 /** Public Taiwan-oriented RSS endpoints (best-effort). */
 const FEEDS: { channel: string; url: string }[] = [
@@ -122,7 +122,7 @@ async function fetchOneFeed(
         "User-Agent": "NewsCeneter/0.1 (RSS reader)",
         Accept: "application/rss+xml, application/xml, text/xml, */*",
       },
-      next: { revalidate: 0 },
+      next: { revalidate: FEED_REVALIDATE },
     });
     if (!res.ok) throw new Error(`RSS HTTP ${res.status}`);
     const xml = await res.text();
@@ -421,34 +421,40 @@ export type ScrapeResult = {
  * Best-effort article body scrape. Never invents text.
  * Returns empty body when the page is blocked or has no extractable content.
  */
-export async function scrapeArticle(url: string): Promise<ScrapeResult> {
-  const cacheKey = `news:scrape:${url}`;
-  const cached = getCached<ScrapeResult>(cacheKey);
-  if (cached) return cached;
-
+async function scrapeArticleUncached(url: string): Promise<ScrapeResult> {
   try {
     const { ok, status, html } = await fetchHtml(url, {
       userAgent: UA_CHROME,
       acceptLanguage: "zh-TW,zh;q=0.9,en;q=0.8",
+      revalidate: SCRAPE_REVALIDATE,
     });
     if (!ok || !html || html.length < 200) {
-      const result: ScrapeResult = { body: "", scraped: false, status };
-      return setCache(cacheKey, result, BODY_CACHE_TTL);
+      return { body: "", scraped: false, status };
     }
     const body = scrapeFromHtml(url, html);
     const images = extractNewsImages(url, html);
-    const result: ScrapeResult = {
+    return {
       body,
       scraped: body.length >= 80,
       status,
       images: images.length ? images : undefined,
     };
-    return setCache(cacheKey, result, BODY_CACHE_TTL);
   } catch (err) {
     console.error(`[news] scrape failed for ${url}:`, err);
-    const result: ScrapeResult = { body: "", scraped: false };
-    return setCache(cacheKey, result, BODY_CACHE_TTL / 2);
+    return { body: "", scraped: false };
   }
+}
+
+/**
+ * Best-effort article body scrape. Durable-cached across serverless instances.
+ * Failures live only briefly.
+ */
+export async function scrapeArticle(url: string): Promise<ScrapeResult> {
+  return durableCached(["news", "scrape", url], () => scrapeArticleUncached(url), {
+    revalidate: SCRAPE_REVALIDATE,
+    failRevalidate: 30,
+    isFailure: (r) => !r.scraped,
+  });
 }
 
 function buildNewsBody(opts: {
@@ -488,40 +494,56 @@ export const newsSource: Source = {
   label: "新聞",
   async fetchFeed(limit = 20) {
     newsLastError = null;
-    const cacheKey = `news:feed:${limit}`;
-    const cached = getCached<FeedItem[]>(cacheKey);
-    if (cached) return cached;
-
-    const results = await Promise.all(
-      FEEDS.map((f) => fetchOneFeed(f.channel, f.url))
+    return durableCached(
+      ["news", "feed", String(limit)],
+      async () => {
+        const results = await Promise.all(
+          FEEDS.map((f) => fetchOneFeed(f.channel, f.url))
+        );
+        let items = results.flat();
+        if (items.length === 0) {
+          newsLastError = "所有新聞 RSS 皆無法取得";
+          console.error("[news]", newsLastError);
+          return [];
+        }
+        return items
+          .sort(
+            (a, b) =>
+              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          )
+          .slice(0, limit);
+      },
+      {
+        revalidate: FEED_REVALIDATE,
+        failRevalidate: 15,
+        isFailure: (items) => items.length === 0,
+      }
     );
-    let items = results.flat();
-    if (items.length === 0) {
-      newsLastError = "所有新聞 RSS 皆無法取得";
-      console.error("[news]", newsLastError);
-      return [];
-    }
-    items = items
-      .sort(
-        (a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      )
-      .slice(0, limit);
-    return setCache(cacheKey, items, CACHE_TTL);
   },
   async fetchPost(params) {
     const url = (params.url || "").trim();
     if (!url || url === "#") return null;
 
-    const feed = await this.fetchFeed(40);
-    const item =
-      feed.find((x) => x.detailParams?.id === params.id) ||
-      feed.find((x) => x.url === url) ||
-      undefined;
-
+    // Scrape immediately — never wait on a full RSS refresh.
     const scrape = await scrapeArticle(url);
-    const title = item?.title || "新聞";
-    const preview = item?.preview || "";
+
+    // Metadata: query/session first, then in-memory feed if already warm.
+    let item: FeedItem | undefined;
+    for (const lim of [40, 20, 60]) {
+      const cached = getCached<FeedItem[]>(`news:feed:${lim}`);
+      if (!cached) continue;
+      item =
+        cached.find((x) => x.detailParams?.id === params.id) ||
+        cached.find((x) => x.url === url);
+      if (item) break;
+    }
+
+    const title = params.title || item?.title || "新聞";
+    const preview = params.preview || item?.preview || "";
+    const author = params.author || item?.author || "新聞";
+    const channel = params.channel || item?.channel || "新聞";
+    const createdAt =
+      params.createdAt || item?.createdAt || new Date().toISOString();
 
     const body = buildNewsBody({
       scrapedBody: scrape.body,
@@ -537,9 +559,9 @@ export const newsSource: Source = {
       id: item?.id || `news:${Buffer.from(url).toString("base64url").slice(0, 24)}`,
       source: "news",
       title,
-      author: item?.author || "新聞",
-      channel: item?.channel || "新聞",
-      createdAt: item?.createdAt || new Date().toISOString(),
+      author,
+      channel,
+      createdAt,
       preview: preview || body.slice(0, 180),
       body,
       url,

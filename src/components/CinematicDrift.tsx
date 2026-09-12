@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { FeedItem } from "@/lib/sources/types";
 import { detailHref } from "@/lib/confluence";
 import { formatTime } from "@/lib/format";
+import { stashPendingPost } from "@/lib/pendingPost";
 import { SourceBadge } from "./SourceBadge";
 
 const INTERVAL_MS = 6000;
@@ -109,6 +110,7 @@ export function CinematicDrift({
   const thumb = item.images?.[0];
 
   function openDetail() {
+    stashPendingPost(item);
     onOpen?.(item.id);
     onExit();
     router.push(detailHref(item));

@@ -12,8 +12,11 @@ export async function fetchHtml(
     userAgent?: string;
     acceptLanguage?: string;
     extraHeaders?: Record<string, string>;
+    /** Next.js fetch cache TTL in seconds. Default 120. */
+    revalidate?: number;
   }
 ): Promise<{ ok: boolean; status: number; html: string }> {
+  const revalidate = options?.revalidate ?? 120;
   const res = await fetch(url, {
     headers: {
       "User-Agent": options?.userAgent || UA_CHROME,
@@ -23,7 +26,7 @@ export async function fetchHtml(
       ...(options?.extraHeaders || {}),
     },
     redirect: "follow",
-    next: { revalidate: 0 },
+    next: { revalidate },
   });
   const html = await res.text();
   return { ok: res.ok, status: res.status, html };

@@ -5,6 +5,7 @@ import type { FeedItem } from "@/lib/sources/types";
 import type { ConfluenceGroup } from "@/lib/confluence";
 import { detailHref } from "@/lib/confluence";
 import { formatTime } from "@/lib/format";
+import { prefetchPostApi, stashPendingPost } from "@/lib/pendingPost";
 import { SourceBadge } from "./SourceBadge";
 
 const GLOW: Record<string, string> = {
@@ -35,7 +36,13 @@ export function HeroSpotlight({
   return (
     <Link
       href={detailHref(item)}
-      onClick={() => onOpen?.(item.id)}
+      prefetch
+      onClick={() => {
+        stashPendingPost(item);
+        onOpen?.(item.id);
+      }}
+      onMouseEnter={() => prefetchPostApi(item)}
+      onFocus={() => prefetchPostApi(item)}
       className={`group relative block overflow-hidden rounded-2xl glass-panel card-lift fade-rise ${
         GLOW[item.source] || ""
       } ${isRead ? "opacity-[0.6]" : ""}`}

@@ -1,5 +1,5 @@
 import * as cheerio from "cheerio";
-import { getCached, setCache } from "../cache";
+import { durableCached } from "../cache";
 import {
   absoluteUrl,
   dedupeUrls,
@@ -9,11 +9,12 @@ import type { Comment, FeedItem, Post, Source } from "./types";
 
 const BASE = "https://www.ptt.cc";
 const BOARDS = ["Gossiping", "Beauty", "Stock", "Baseball", "Mobilesales"] as const;
-const CACHE_TTL = 45_000;
+const LIST_REVALIDATE = 60;
+const ARTICLE_REVALIDATE = 180;
 const UA =
   "Mozilla/5.0 (compatible; NewsCeneter/0.1; +https://localhost) AppleWebKit/537.36";
 
-async function pttFetch(path: string): Promise<string> {
+async function pttFetch(path: string, revalidate = LIST_REVALIDATE): Promise<string> {
   const url = path.startsWith("http") ? path : `${BASE}${path}`;
   const res = await fetch(url, {
     headers: {
@@ -21,7 +22,7 @@ async function pttFetch(path: string): Promise<string> {
       Cookie: "over18=1",
       Accept: "text/html,application/xhtml+xml",
     },
-    next: { revalidate: 0 },
+    next: { revalidate },
   });
   if (!res.ok) {
     throw new Error(`PTT HTTP ${res.status} for ${url}`);
@@ -63,12 +64,11 @@ function boardFromHref(href: string): string | null {
 }
 
 async function fetchBoardIndex(board: string, limit: number): Promise<FeedItem[]> {
-  const cacheKey = `ptt:list:${board}:${limit}`;
-  const cached = getCached<FeedItem[]>(cacheKey);
-  if (cached) return cached;
-
+  return durableCached(
+    ["ptt", "list", board, String(limit)],
+    async () => {
   try {
-    const html = await pttFetch(`/bbs/${board}/index.html`);
+    const html = await pttFetch(`/bbs/${board}/index.html`, LIST_REVALIDATE);
     const $ = cheerio.load(html);
     const items: FeedItem[] = [];
 
@@ -103,11 +103,18 @@ async function fetchBoardIndex(board: string, limit: number): Promise<FeedItem[]
       });
     });
 
-    return setCache(cacheKey, items, CACHE_TTL);
+    return items;
   } catch (err) {
     console.error(`[ptt] board ${board} failed:`, err);
     return [];
   }
+    },
+    {
+      revalidate: LIST_REVALIDATE,
+      failRevalidate: 15,
+      isFailure: (items) => items.length === 0,
+    }
+  );
 }
 
 function parsePushes($: cheerio.CheerioAPI): Comment[] {
@@ -183,14 +190,10 @@ function extractPttImages(html: string, pageUrl: string): string[] {
   return dedupeUrls(found);
 }
 
-async function fetchArticle(board: string, id: string): Promise<Post | null> {
-  const cacheKey = `ptt:post:${board}:${id}`;
-  const cached = getCached<Post>(cacheKey);
-  if (cached) return cached;
-
+async function fetchArticleUncached(board: string, id: string): Promise<Post | null> {
   try {
     const path = `/bbs/${board}/${id}.html`;
-    const html = await pttFetch(path);
+    const html = await pttFetch(path, ARTICLE_REVALIDATE);
     const $ = cheerio.load(html);
 
     const meta: Record<string, string> = {};
@@ -238,11 +241,23 @@ async function fetchArticle(board: string, id: string): Promise<Post | null> {
       detailParams: { source: "ptt", board, id },
     };
 
-    return setCache(cacheKey, post, CACHE_TTL);
+    return post;
   } catch (err) {
     console.error(`[ptt] article ${board}/${id} failed:`, err);
     return null;
   }
+}
+
+async function fetchArticle(board: string, id: string): Promise<Post | null> {
+  return durableCached(
+    ["ptt", "post", board, id],
+    () => fetchArticleUncached(board, id),
+    {
+      revalidate: ARTICLE_REVALIDATE,
+      failRevalidate: 20,
+      isFailure: (post) => post === null,
+    }
+  );
 }
 
 export const pttSource: Source = {

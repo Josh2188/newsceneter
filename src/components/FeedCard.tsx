@@ -6,6 +6,7 @@ import type { FeedItem } from "@/lib/sources/types";
 import type { ConfluenceGroup } from "@/lib/confluence";
 import { detailHref } from "@/lib/confluence";
 import { formatTime } from "@/lib/format";
+import { prefetchPostApi, stashPendingPost } from "@/lib/pendingPost";
 import { SourceBadge } from "./SourceBadge";
 
 const GLOW: Record<string, string> = {
@@ -55,7 +56,13 @@ export function FeedCard({
     >
       <Link
         href={detailHref(item)}
-        onClick={() => onOpen?.(item.id)}
+        prefetch
+        onClick={() => {
+          stashPendingPost(item);
+          onOpen?.(item.id);
+        }}
+        onMouseEnter={() => prefetchPostApi(item)}
+        onFocus={() => prefetchPostApi(item)}
         className={`block ${featured ? "p-4 sm:p-5" : "p-3.5"}`}
       >
         <div className="mb-2 flex items-center gap-2 text-xs text-river-muted">
@@ -127,7 +134,12 @@ export function FeedCard({
                 <li key={sib.id}>
                   <Link
                     href={detailHref(sib)}
-                    onClick={() => onOpen?.(sib.id)}
+                    prefetch
+                    onClick={() => {
+                      stashPendingPost(sib);
+                      onOpen?.(sib.id);
+                    }}
+                    onMouseEnter={() => prefetchPostApi(sib)}
                     className="flex items-start gap-2 rounded-md border border-river-border/50 bg-river-bg/40 px-2 py-1.5 text-[11px] hover:border-river-accent/30"
                   >
                     <SourceBadge source={sib.source} />
@@ -164,7 +176,13 @@ export function ImageWallCard({
   return (
     <Link
       href={detailHref(item)}
-      onClick={() => onOpen?.(item.id)}
+      prefetch
+      onClick={() => {
+        stashPendingPost(item);
+        onOpen?.(item.id);
+      }}
+      onMouseEnter={() => prefetchPostApi(item)}
+      onFocus={() => prefetchPostApi(item)}
       className={`group relative block overflow-hidden rounded-xl border border-river-border/50 bg-river-panel card-lift fade-rise ${
         GLOW[item.source] || ""
       } ${isRead ? "opacity-[0.55]" : ""}`}

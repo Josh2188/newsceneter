@@ -1,12 +1,15 @@
 import { readFileSync } from "fs";
 import { join } from "path";
-import { getCached, setCache } from "../cache";
+import { durableCached, getCached, setCache, withTimeout } from "../cache";
 import { UA_CHROME, UA_GOOGLEBOT } from "../html";
 import { dedupeUrls, pickBestCandidate } from "../images";
 import type { Comment, FeedItem, Post, Source } from "./types";
 import bundledCacheImport from "../../data/threads-cache.json";
 
 export const CACHE_TTL = 60_000;
+const FEED_REVALIDATE = 60;
+const POST_REVALIDATE = 180;
+const POST_SCRAPE_TIMEOUT_MS = 2500;
 /** Default Taiwan / Traditional Chinese accounts (mediaData=true from this env). Override with THREADS_USERS. */
 export const DEFAULT_USERS = [
   "thenewslens",
@@ -405,7 +408,7 @@ export async function fetchPostHtml(
         Referer: "https://www.threads.com/",
       },
       redirect: "follow",
-      next: { revalidate: 0 },
+      next: { revalidate: POST_REVALIDATE },
     });
     lastStatus = res.status;
     if (!res.ok) continue;
@@ -470,7 +473,7 @@ export async function fetchProfileHtml(username: string): Promise<string> {
         Referer: "https://www.threads.com/",
       },
       redirect: "follow",
-      next: { revalidate: 0 },
+      next: { revalidate: FEED_REVALIDATE },
     });
     lastStatus = res.status;
     if (!res.ok) continue;
@@ -583,176 +586,209 @@ function applyBundledCache(limit: number): FeedItem[] {
 }
 
 async function fetchUserPosts(username: string): Promise<FeedItem[]> {
-  const cacheKey = `threads:user:${username}`;
-  const cached = getCached<FeedItem[]>(cacheKey);
-  if (cached) return cached;
-
-  try {
-    const { items, raw } = await scrapeUserPosts(username);
-    cacheBodies(raw);
-    if (items.length === 0) {
-      console.warn(`[threads] @${username}: no posts parsed`);
-      return [];
+  return durableCached(
+    ["threads", "user", username],
+    async () => {
+      try {
+        const { items, raw } = await scrapeUserPosts(username);
+        cacheBodies(raw);
+        if (items.length === 0) {
+          console.warn(`[threads] @${username}: no posts parsed`);
+          return [];
+        }
+        return items;
+      } catch (err) {
+        console.error(`[threads] @${username} failed:`, err);
+        return [];
+      }
+    },
+    {
+      revalidate: FEED_REVALIDATE,
+      failRevalidate: 15,
+      isFailure: (items) => items.length === 0,
     }
-    return setCache(cacheKey, items, CACHE_TTL);
-  } catch (err) {
-    console.error(`[threads] @${username} failed:`, err);
-    return [];
-  }
+  );
 }
 
+
+function itemFromParams(params: Record<string, string>): FeedItem {
+  const id = params.id;
+  const user = (params.user || "").replace(/^@/, "");
+  const url = user
+    ? `https://www.threads.com/@${user}/post/${id}`
+    : `https://www.threads.com/t/${id}`;
+  return {
+    id: `threads:${id}`,
+    source: "threads",
+    title: params.title || (user ? `@${user} 貼文` : "Threads 貼文"),
+    author: params.author || user || "threads",
+    channel: params.channel || (user ? `@${user}` : "Threads"),
+    createdAt: params.createdAt || new Date().toISOString(),
+    preview: params.preview || "",
+    url,
+    detailParams: { source: "threads", id, user },
+  };
+}
+
+async function fetchThreadsPostUncached(
+  params: Record<string, string>
+): Promise<Post | null> {
+  const id = params.id;
+  if (!id) return null;
+
+  const user = (params.user || "").replace(/^@/, "");
+  let baseItem: FeedItem | null = null;
+  let bodyText = "";
+  let comments: Comment[] = [];
+  let scrapeNote: string | null = null;
+  let images: string[] = [];
+
+  // Memory / bundled body cache first (fast path for caption)
+  const bodyCached = getCached<{ text: string; item: FeedItem }>(
+    `threads:body:${id}`
+  );
+  if (bodyCached) {
+    baseItem = bodyCached.item;
+    bodyText = bodyCached.text;
+    if (baseItem.images?.length) images = [...baseItem.images];
+  }
+
+  if (!baseItem) {
+    const bundled = loadBundledCache();
+    if (bundled) {
+      const text = bundled.bodies?.[id];
+      const item =
+        bundled.items.find((x) => x.detailParams?.id === id) ||
+        bundled.items.find((x) => x.id === `threads:${id}`);
+      if (item) {
+        baseItem = item;
+        bodyText = text || item.preview;
+        if (item.images?.length) images = [...item.images];
+      }
+    }
+  }
+
+  // Query/session metadata — never block on a full river/feed scrape
+  if (!baseItem && (user || params.title)) {
+    baseItem = itemFromParams(params);
+    bodyText = params.preview || "";
+  }
+
+  if (!baseItem) return null;
+
+  const username = user || baseItem.author || baseItem.detailParams?.user || "";
+
+  // Live scrape with a short timeout; return cached/preview rather than hang
+  if (username) {
+    try {
+      const html = await withTimeout(
+        fetchPostHtml(username, id),
+        POST_SCRAPE_TIMEOUT_MS
+      );
+      const parsed = parsePostPageData(html, id, username);
+      if (parsed.rootText && parsed.rootText.length >= bodyText.length) {
+        bodyText = parsed.rootText;
+        setCache(
+          `threads:body:${id}`,
+          { text: bodyText, item: baseItem },
+          CACHE_TTL * 2
+        );
+      }
+      if (parsed.images.length) {
+        images = dedupeUrls([...images, ...parsed.images]);
+      }
+      comments = parsed.comments;
+      if (
+        comments.length === 0 &&
+        (baseItem.engagement?.comments || 0) > 0
+      ) {
+        scrapeNote =
+          "此貼文頁面未取得公開回應（可能被封鎖或需登入），請至原文查看。";
+      }
+    } catch (err) {
+      console.warn(`[threads] post scrape @${username}/${id} failed:`, err);
+      scrapeNote =
+        bodyText || baseItem.preview
+          ? "Threads 貼文頁面逾時或無法抓取回應，以上為快取／預覽，請至原文查看。"
+          : "Threads 貼文頁面無法抓取回應（可能被封鎖），內文來自快取／預覽，請至原文查看。";
+      comments = [];
+    }
+  } else {
+    comments = [];
+    scrapeNote = "無法解析 Threads 帳號，回應未取得，請至原文查看。";
+  }
+
+  let body = bodyText || baseItem.preview;
+  if (scrapeNote && comments.length === 0) {
+    body = `${body}\n\n※ ${scrapeNote}`;
+  }
+
+  if (!images.length && baseItem.images?.length) {
+    images = [...baseItem.images];
+  }
+
+  return {
+    ...baseItem,
+    body,
+    comments,
+    images: images.length ? images : undefined,
+  } satisfies Post;
+}
 
 export const threadsSource: Source = {
   id: "threads",
   label: "Threads",
   async fetchFeed(limit = 20) {
     threadsLastError = null;
-    const cacheKey = `threads:feed:${limit}`;
-    const cached = getCached<FeedItem[]>(cacheKey);
-    if (cached) return cached;
+    return durableCached(
+      ["threads", "feed", String(limit)],
+      async () => {
+        const users = getUsernames();
+        const batches = await Promise.all(users.map((u) => fetchUserPosts(u)));
+        const byId = new Map<string, FeedItem>();
+        for (const batch of batches) {
+          for (const item of batch) {
+            if (!byId.has(item.id)) byId.set(item.id, item);
+          }
+        }
+        const sorted = [...byId.values()].sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        let items = preferCjkItems(sorted, limit);
 
-    const users = getUsernames();
-    const batches = await Promise.all(users.map((u) => fetchUserPosts(u)));
-    const byId = new Map<string, FeedItem>();
-    for (const batch of batches) {
-      for (const item of batch) {
-        if (!byId.has(item.id)) byId.set(item.id, item);
+        if (items.length === 0) {
+          // Live scrape empty (common on Vercel datacenter IPs) → bundled cache
+          items = applyBundledCache(limit);
+          if (items.length > 0) {
+            return items;
+          }
+          threadsLastError =
+            "Threads 公開頁面無法取得貼文（可能被封鎖或帳號無效），且無可用快取";
+          console.error("[threads]", threadsLastError);
+          return [];
+        }
+        return items;
+      },
+      {
+        revalidate: FEED_REVALIDATE,
+        failRevalidate: 15,
+        isFailure: (items) => items.length === 0,
       }
-    }
-    const sorted = [...byId.values()].sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
-    let items = preferCjkItems(sorted, limit);
-
-    if (items.length === 0) {
-      // Live scrape empty (common on Vercel datacenter IPs) → bundled cache
-      items = applyBundledCache(limit);
-      if (items.length > 0) {
-        // Soft notice only in logs; do NOT set threadsLastError (no error banner)
-        return setCache(cacheKey, items, CACHE_TTL);
-      }
-      threadsLastError =
-        "Threads 公開頁面無法取得貼文（可能被封鎖或帳號無效），且無可用快取";
-      console.error("[threads]", threadsLastError);
-      return [];
-    }
-    return setCache(cacheKey, items, CACHE_TTL);
   },
   async fetchPost(params) {
     const id = params.id;
     if (!id) return null;
-
     const user = (params.user || "").replace(/^@/, "");
-    let baseItem: FeedItem | null = null;
-    let bodyText = "";
-    let comments: Comment[] = [];
-    let scrapeNote: string | null = null;
-    let images: string[] = [];
-
-    // Memory / bundled body cache first (fast path for caption)
-    const bodyCached = getCached<{ text: string; item: FeedItem }>(
-      `threads:body:${id}`
+    return durableCached(
+      ["threads", "post", user, id],
+      () => fetchThreadsPostUncached(params),
+      {
+        revalidate: POST_REVALIDATE,
+        failRevalidate: 20,
+        isFailure: (post) => post === null,
+      }
     );
-    if (bodyCached) {
-      baseItem = bodyCached.item;
-      bodyText = bodyCached.text;
-      if (baseItem.images?.length) images = [...baseItem.images];
-    }
-
-    if (!baseItem) {
-      const bundled = loadBundledCache();
-      if (bundled) {
-        const text = bundled.bodies?.[id];
-        const item =
-          bundled.items.find((x) => x.detailParams?.id === id) ||
-          bundled.items.find((x) => x.id === `threads:${id}`);
-        if (item) {
-          baseItem = item;
-          bodyText = text || item.preview;
-          if (item.images?.length) images = [...item.images];
-        }
-      }
-    }
-
-    if (!baseItem) {
-      const feed = await this.fetchFeed(40);
-      const item =
-        feed.find((x) => x.detailParams?.id === id) ||
-        feed.find((x) => x.id === `threads:${id}`);
-      if (item) {
-        baseItem = item;
-        const body = getCached<{ text: string; item: FeedItem }>(
-          `threads:body:${id}`
-        );
-        bodyText = body?.text || item.preview;
-      } else if (user) {
-        const userItems = await fetchUserPosts(user);
-        const found = userItems.find((x) => x.detailParams?.id === id);
-        if (found) {
-          baseItem = found;
-          const body = getCached<{ text: string; item: FeedItem }>(
-            `threads:body:${id}`
-          );
-          bodyText = body?.text || found.preview;
-        }
-      }
-    }
-
-    if (!baseItem) return null;
-
-    const username = user || baseItem.author || baseItem.detailParams?.user || "";
-
-    // Live scrape post page for fuller caption + replies
-    if (username) {
-      try {
-        const html = await fetchPostHtml(username, id);
-        const parsed = parsePostPageData(html, id, username);
-        if (parsed.rootText && parsed.rootText.length >= bodyText.length) {
-          bodyText = parsed.rootText;
-          setCache(
-            `threads:body:${id}`,
-            { text: bodyText, item: baseItem },
-            CACHE_TTL * 2
-          );
-        }
-        if (parsed.images.length) {
-          images = dedupeUrls([...images, ...parsed.images]);
-        }
-        comments = parsed.comments;
-        if (
-          comments.length === 0 &&
-          (baseItem.engagement?.comments || 0) > 0
-        ) {
-          scrapeNote =
-            "此貼文頁面未取得公開回應（可能被封鎖或需登入），請至原文查看。";
-        }
-      } catch (err) {
-        console.warn(`[threads] post scrape @${username}/${id} failed:`, err);
-        scrapeNote =
-          "Threads 貼文頁面無法抓取回應（可能被封鎖），內文來自快取／預覽，請至原文查看。";
-        comments = [];
-      }
-    } else {
-      comments = [];
-      scrapeNote =
-        "無法解析 Threads 帳號，回應未取得，請至原文查看。";
-    }
-
-    let body = bodyText || baseItem.preview;
-    if (scrapeNote && comments.length === 0) {
-      body = `${body}\n\n※ ${scrapeNote}`;
-    }
-
-    if (!images.length && baseItem.images?.length) {
-      images = [...baseItem.images];
-    }
-
-    return {
-      ...baseItem,
-      body,
-      comments,
-      images: images.length ? images : undefined,
-    } satisfies Post;
   },
 };

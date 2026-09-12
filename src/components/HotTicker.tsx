@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { FeedItem } from "@/lib/sources/types";
 import { detailHref } from "@/lib/confluence";
 import { SOURCE_LABEL } from "@/lib/format";
+import { stashPendingPost } from "@/lib/pendingPost";
 
 export function HotTicker({
   items,
@@ -22,6 +23,7 @@ export function HotTicker({
   const loop = [...items, ...items];
 
   function go(item: FeedItem) {
+    stashPendingPost(item);
     onOpen?.(item.id);
     router.push(detailHref(item));
   }

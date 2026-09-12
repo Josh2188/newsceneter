@@ -113,7 +113,15 @@ export function clusterConfluence(
 }
 
 export function detailHref(item: FeedItem): string {
-  const p = item.detailParams || { source: item.source, id: item.id };
+  const p: Record<string, string> = {
+    ...(item.detailParams || { source: item.source, id: item.id }),
+  };
+  if (!p.source) p.source = item.source;
+  if (item.title && !p.title) p.title = item.title;
+  if (item.author && !p.author) p.author = item.author;
+  if (item.channel && !p.channel) p.channel = item.channel;
+  if (item.createdAt && !p.createdAt) p.createdAt = item.createdAt;
+  if (item.preview && !p.preview) p.preview = item.preview.slice(0, 180);
   const q = new URLSearchParams(p);
   return `/post?${q.toString()}`;
 }

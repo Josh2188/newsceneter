@@ -1,7 +1,11 @@
+import { withTimeout } from "../cache";
 import type { FeedItem, Post, Source, SourceId } from "./types";
 import { pttSource } from "./ptt";
 import { threadsSource, threadsLastError } from "./threads";
 import { newsSource, newsLastError } from "./news";
+
+/** Don't let one slow source (e.g. Threads) hold the whole river. */
+const SOURCE_TIMEOUT_MS = 4_000;
 
 /** Active sources merged into the default river. */
 export const sources: Source[] = [
@@ -41,7 +45,14 @@ export async function fetchRiver(options?: {
   const batches = await Promise.all(
     selected.map(async (s) => {
       try {
-        return await s.fetchFeed(Math.ceil(limit / selected.length) + 5);
+        return await withTimeout(
+          s.fetchFeed(Math.ceil(limit / selected.length) + 5),
+          SOURCE_TIMEOUT_MS,
+          () => {
+            console.warn(`[river] source ${s.id} timed out after ${SOURCE_TIMEOUT_MS}ms`);
+            return [] as FeedItem[];
+          }
+        );
       } catch (err) {
         console.error(`[river] source ${s.id} failed:`, err);
         return [] as FeedItem[];

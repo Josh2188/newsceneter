@@ -11,6 +11,7 @@ import {
   loadReadIds,
   markRead,
 } from "@/lib/readIds";
+import { stashPendingPost } from "@/lib/pendingPost";
 import { FeedCard, ImageWallCard } from "./FeedCard";
 import { FilterChips, type FilterId } from "./FilterChips";
 import { RiverThermometer } from "./RiverThermometer";
@@ -42,13 +43,13 @@ export function RiverFeed() {
     setReadIds(loadReadIds());
   }, []);
 
-  const load = useCallback(async (source: FilterId) => {
+  const load = useCallback(async (source: FilterId, bust = false) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/river?source=${source}&limit=60`, {
-        cache: "no-store",
-      });
+      const qs = new URLSearchParams({ source, limit: "40" });
+      if (bust) qs.set("_", String(Date.now()));
+      const res = await fetch(`/api/river?${qs.toString()}`);
       const data = await res.json();
       if (!res.ok || !data.ok) {
         throw new Error(data.error || "載入失敗");
@@ -118,6 +119,7 @@ export function RiverFeed() {
     if (filtered.length === 0) return;
     const pick = filtered[Math.floor(Math.random() * filtered.length)];
     setDiving(true);
+    stashPendingPost(pick);
     handleOpen(pick.id);
     setTimeout(() => {
       router.push(detailHref(pick));
@@ -210,7 +212,7 @@ export function RiverFeed() {
         </span>
         <button
           type="button"
-          onClick={() => load(filter)}
+          onClick={() => load(filter, true)}
           className="rounded border border-river-border px-2 py-1 hover:border-river-accent hover:text-river-accent"
           disabled={loading}
         >
@@ -235,7 +237,7 @@ export function RiverFeed() {
           <button
             type="button"
             className="ml-3 underline"
-            onClick={() => load(filter)}
+            onClick={() => load(filter, true)}
           >
             重試
           </button>

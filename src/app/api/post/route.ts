@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchPostDetail, type SourceId } from "@/lib/sources";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+export const revalidate = 120;
 
 const VALID: SourceId[] = [
   "ptt",
@@ -30,15 +29,32 @@ export async function GET(req: NextRequest) {
     if (!post) {
       return NextResponse.json(
         { ok: false, error: "找不到文章" },
-        { status: 404 }
+        {
+          status: 404,
+          headers: {
+            "Cache-Control": "public, s-maxage=15, stale-while-revalidate=30",
+          },
+        }
       );
     }
-    return NextResponse.json({ ok: true, post });
+    return NextResponse.json(
+      { ok: true, post },
+      {
+        headers: {
+          "Cache-Control": "public, s-maxage=120, stale-while-revalidate=300",
+        },
+      }
+    );
   } catch (err) {
     console.error("[api/post]", err);
     return NextResponse.json(
       { ok: false, error: "載入文章失敗" },
-      { status: 500 }
+      {
+        status: 500,
+        headers: {
+          "Cache-Control": "public, s-maxage=10, stale-while-revalidate=30",
+        },
+      }
     );
   }
 }
