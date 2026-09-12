@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { FeedItem } from "@/lib/sources/types";
+import { shuffled } from "@/lib/shuffle";
 import { clusterConfluence, detailHref } from "@/lib/confluence";
 import { computeThermometer } from "@/lib/thermometer";
 import { pickHeroItem, pickTickerItems } from "@/lib/rank";
@@ -54,7 +55,8 @@ export function RiverFeed() {
       if (!res.ok || !data.ok) {
         throw new Error(data.error || "載入失敗");
       }
-      setItems(data.items || []);
+      // Server already randomizes; light client reshuffle adds browser entropy
+      setItems(shuffled(data.items || []));
       setSourceErrors(Array.isArray(data.errors) ? data.errors : []);
       setFetchedAt(data.fetchedAt || null);
     } catch (e) {
@@ -208,7 +210,7 @@ export function RiverFeed() {
                   unreadOnly || imageWall
                     ? `（篩自 ${items.length}）`
                     : ""
-                } · 單一河道時間排序`}
+                } · 隨機混流`}
         </span>
         <button
           type="button"

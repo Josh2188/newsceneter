@@ -5,10 +5,29 @@ import {
   dedupeUrls,
   looksLikeImageUrl,
 } from "../images";
+import { sampleN, shuffled } from "../shuffle";
 import type { Comment, FeedItem, Post, Source } from "./types";
 
 const BASE = "https://www.ptt.cc";
-const BOARDS = ["Gossiping", "Beauty", "Stock", "Baseball", "Mobilesales"] as const;
+/** Popular Taiwan boards — each refresh randomly samples a subset. */
+export const BOARDS = [
+  "Gossiping",
+  "Beauty",
+  "Stock",
+  "Baseball",
+  "Mobilesales",
+  "HatePolitics",
+  "NBA",
+  "Tech_Job",
+  "movie",
+  "Joke",
+  "WomenTalk",
+  "Soft_Job",
+  "car",
+] as const;
+const BOARDS_PER_REFRESH = 5;
+/** How far back (index pages) we may randomly dig on a board. */
+const MAX_INDEX_OFFSET = 8;
 const LIST_REVALIDATE = 60;
 const ARTICLE_REVALIDATE = 180;
 const UA =
@@ -63,51 +82,79 @@ function boardFromHref(href: string): string | null {
   return m ? m[1] : null;
 }
 
-async function fetchBoardIndex(board: string, limit: number): Promise<FeedItem[]> {
-  return durableCached(
-    ["ptt", "list", board, String(limit)],
-    async () => {
-  try {
-    const html = await pttFetch(`/bbs/${board}/index.html`, LIST_REVALIDATE);
-    const $ = cheerio.load(html);
-    const items: FeedItem[] = [];
+function parseBoardListHtml(html: string, board: string): FeedItem[] {
+  const $ = cheerio.load(html);
+  const items: FeedItem[] = [];
 
-    $(".r-ent").each((_, el) => {
-      if (items.length >= limit) return;
-      const titleEl = $(el).find(".title a");
-      const href = titleEl.attr("href");
-      if (!href || !titleEl.text().trim()) return;
-      // Skip deleted / empty
-      const title = titleEl.text().trim();
-      const author = $(el).find(".meta .author").text().trim() || "匿名";
-      const dateRaw = $(el).find(".meta .date").text().trim();
-      const nrec = $(el).find(".nrec").text().trim();
-      let pushes = 0;
-      if (nrec === "爆") pushes = 100;
-      else if (/^\d+$/.test(nrec)) pushes = Number(nrec);
+  $(".r-ent").each((_, el) => {
+    const titleEl = $(el).find(".title a");
+    const href = titleEl.attr("href");
+    if (!href || !titleEl.text().trim()) return;
+    const title = titleEl.text().trim();
+    const author = $(el).find(".meta .author").text().trim() || "匿名";
+    const dateRaw = $(el).find(".meta .date").text().trim();
+    const nrec = $(el).find(".nrec").text().trim();
+    let pushes = 0;
+    if (nrec === "爆") pushes = 100;
+    else if (/^\d+$/.test(nrec)) pushes = Number(nrec);
 
-      const id = articleIdFromHref(href);
-      if (!id) return;
+    const id = articleIdFromHref(href);
+    if (!id) return;
 
-      items.push({
-        id: `ptt:${board}:${id}`,
-        source: "ptt",
-        title,
-        author,
-        channel: board,
-        createdAt: parseListTime(dateRaw),
-        preview: `${board} · ${author}`,
-        url: `${BASE}${href}`,
-        engagement: { pushes },
-        detailParams: { source: "ptt", board, id },
-      });
+    items.push({
+      id: `ptt:${board}:${id}`,
+      source: "ptt",
+      title,
+      author,
+      channel: board,
+      createdAt: parseListTime(dateRaw),
+      preview: `${board} · ${author}`,
+      url: `${BASE}${href}`,
+      engagement: { pushes },
+      detailParams: { source: "ptt", board, id },
     });
+  });
 
-    return items;
-  } catch (err) {
-    console.error(`[ptt] board ${board} failed:`, err);
-    return [];
-  }
+  return items;
+}
+
+/** Resolve a page number from the board index "上一頁" link (e.g. index3921.html). */
+function parsePrevIndexNum(html: string): number | null {
+  const $ = cheerio.load(html);
+  let prev: string | undefined;
+  $(".btn-group-paging a").each((_, el) => {
+    const t = $(el).text().trim();
+    if (t.includes("上頁") || t.includes("上一頁")) {
+      prev = $(el).attr("href") || undefined;
+    }
+  });
+  if (!prev) return null;
+  const m = prev.match(/index(\d+)\.html/);
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * Fetch one board list page. `page` 0 = index.html (latest);
+ * positive N = index{N}.html (older). Cached per board+page.
+ */
+async function fetchBoardPage(
+  board: string,
+  page: number
+): Promise<FeedItem[]> {
+  const path =
+    page <= 0
+      ? `/bbs/${board}/index.html`
+      : `/bbs/${board}/index${page}.html`;
+  return durableCached(
+    ["ptt", "list", board, page <= 0 ? "latest" : String(page)],
+    async () => {
+      try {
+        const html = await pttFetch(path, LIST_REVALIDATE);
+        return parseBoardListHtml(html, board);
+      } catch (err) {
+        console.error(`[ptt] board ${board} page ${page} failed:`, err);
+        return [];
+      }
     },
     {
       revalidate: LIST_REVALIDATE,
@@ -115,6 +162,30 @@ async function fetchBoardIndex(board: string, limit: number): Promise<FeedItem[]
       isFailure: (items) => items.length === 0,
     }
   );
+}
+
+/** Pick a random older index page number near the current head. */
+async function pickRandomPage(board: string): Promise<number> {
+  // 40% chance: stay on latest index.html
+  if (Math.random() < 0.4) return 0;
+  try {
+    const html = await pttFetch(`/bbs/${board}/index.html`, LIST_REVALIDATE);
+    const prev = parsePrevIndexNum(html);
+    if (prev == null || prev < 2) return 0;
+    const offset = 1 + Math.floor(Math.random() * MAX_INDEX_OFFSET);
+    return Math.max(1, prev - offset + 1);
+  } catch {
+    return 0;
+  }
+}
+
+async function fetchBoardIndex(board: string, poolSize: number): Promise<FeedItem[]> {
+  const page = await pickRandomPage(board);
+  const items = await fetchBoardPage(board, page);
+  // If older page empty, fall back to latest
+  const pool =
+    items.length > 0 ? items : page !== 0 ? await fetchBoardPage(board, 0) : items;
+  return sampleN(pool, Math.min(poolSize, pool.length));
 }
 
 function parsePushes($: cheerio.CheerioAPI): Comment[] {
@@ -264,11 +335,24 @@ export const pttSource: Source = {
   id: "ptt",
   label: "PTT",
   async fetchFeed(limit = 20) {
-    const perBoard = Math.max(3, Math.ceil(limit / BOARDS.length));
-    const results = await Promise.all(
-      BOARDS.map((b) => fetchBoardIndex(b, perBoard))
+    const boardPool = shuffled([...BOARDS]);
+    const picked = boardPool.slice(
+      0,
+      Math.min(BOARDS_PER_REFRESH, boardPool.length)
     );
-    return results.flat().slice(0, limit * 2);
+    // Shuffle fetch order for extra entropy (Promise.all still parallel)
+    const ordered = shuffled(picked);
+    const perBoard = Math.max(4, Math.ceil((limit * 1.5) / ordered.length));
+    const results = await Promise.all(
+      ordered.map((b) => fetchBoardIndex(b, perBoard))
+    );
+    const byId = new Map<string, FeedItem>();
+    for (const batch of results) {
+      for (const item of batch) {
+        if (!byId.has(item.id)) byId.set(item.id, item);
+      }
+    }
+    return sampleN([...byId.values()], Math.min(limit * 2, byId.size));
   },
   async fetchPost(params) {
     const board = params.board;
@@ -278,4 +362,4 @@ export const pttSource: Source = {
   },
 };
 
-export { fetchArticle, BOARDS };
+export { fetchArticle };

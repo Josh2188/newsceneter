@@ -11,6 +11,7 @@ import {
   dedupeUrls,
   isJunkImageUrl,
 } from "../images";
+import { sampleN, shuffled, softRecencyShuffle } from "../shuffle";
 import type { FeedItem, Post, Source } from "./types";
 
 const FEED_REVALIDATE = 60;
@@ -81,7 +82,7 @@ function extractDescription(block: string): string {
 function parseRss(xml: string, channel: string): FeedItem[] {
   const items: FeedItem[] = [];
   const blocks = xml.match(/<item[\s\S]*?<\/item>/gi) || [];
-  for (const block of blocks.slice(0, 12)) {
+  for (const block of blocks.slice(0, 30)) {
     const title = extractTag(block, "title");
     const link = extractLink(block);
     const desc = extractDescription(block);
@@ -112,7 +113,7 @@ function parseRss(xml: string, channel: string): FeedItem[] {
   return items;
 }
 
-async function fetchOneFeed(
+async function fetchOneFeedUncached(
   channel: string,
   url: string
 ): Promise<FeedItem[]> {
@@ -131,6 +132,22 @@ async function fetchOneFeed(
     console.error(`[news] feed ${channel} failed:`, err);
     return [];
   }
+}
+
+/** Durable-cache raw RSS per channel; shuffle happens outside. */
+async function fetchOneFeed(
+  channel: string,
+  url: string
+): Promise<FeedItem[]> {
+  return durableCached(
+    ["news", "rss", channel],
+    () => fetchOneFeedUncached(channel, url),
+    {
+      revalidate: FEED_REVALIDATE,
+      failRevalidate: 15,
+      isFailure: (items) => items.length === 0,
+    }
+  );
 }
 
 function joinMeaningful(
@@ -494,31 +511,30 @@ export const newsSource: Source = {
   label: "新聞",
   async fetchFeed(limit = 20) {
     newsLastError = null;
-    return durableCached(
-      ["news", "feed", String(limit)],
-      async () => {
-        const results = await Promise.all(
-          FEEDS.map((f) => fetchOneFeed(f.channel, f.url))
-        );
-        let items = results.flat();
-        if (items.length === 0) {
-          newsLastError = "所有新聞 RSS 皆無法取得";
-          console.error("[news]", newsLastError);
-          return [];
-        }
-        return items
-          .sort(
-            (a, b) =>
-              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-          )
-          .slice(0, limit);
-      },
-      {
-        revalidate: FEED_REVALIDATE,
-        failRevalidate: 15,
-        isFailure: (items) => items.length === 0,
-      }
+    // Raw RSS per channel is durable-cached; sample + shuffle every request
+    const feedOrder = shuffled(FEEDS);
+    const results = await Promise.all(
+      feedOrder.map((f) => fetchOneFeed(f.channel, f.url))
     );
+    const nonEmpty = results.filter((r) => r.length > 0);
+    if (nonEmpty.length === 0) {
+      newsLastError = "所有新聞 RSS 皆無法取得";
+      console.error("[news]", newsLastError);
+      return [];
+    }
+    // Sample roughly evenly across feeds, then soft-recency + final shuffle
+    const perFeed = Math.max(4, Math.ceil((limit * 2) / nonEmpty.length));
+    const sampled = nonEmpty.map((batch) =>
+      sampleN(batch, Math.min(perFeed, batch.length))
+    );
+    const byId = new Map<string, FeedItem>();
+    for (const batch of sampled) {
+      for (const item of batch) {
+        if (!byId.has(item.id)) byId.set(item.id, item);
+      }
+    }
+    const pool = softRecencyShuffle([...byId.values()]);
+    return sampleN(pool, Math.min(limit * 2, pool.length));
   },
   async fetchPost(params) {
     const url = (params.url || "").trim();
@@ -527,10 +543,10 @@ export const newsSource: Source = {
     // Scrape immediately — never wait on a full RSS refresh.
     const scrape = await scrapeArticle(url);
 
-    // Metadata: query/session first, then in-memory feed if already warm.
+    // Metadata: query/session first, then in-memory per-RSS caches if warm.
     let item: FeedItem | undefined;
-    for (const lim of [40, 20, 60]) {
-      const cached = getCached<FeedItem[]>(`news:feed:${lim}`);
+    for (const feed of FEEDS) {
+      const cached = getCached<FeedItem[]>(`news:rss:${feed.channel}`);
       if (!cached) continue;
       item =
         cached.find((x) => x.detailParams?.id === params.id) ||

@@ -118,6 +118,7 @@ export function RiverToolbar({
 
       {hintOpen && (
         <div className="glass-panel absolute right-0 top-full z-20 mt-1 w-56 rounded-lg px-3 py-2 text-[11px] text-river-muted shadow-lg">
+          <p className="mb-1 text-river-muted/80">河道本身每次整理皆隨機混流</p>
           <p>
             <kbd className="rounded bg-river-border/80 px-1 font-mono text-river-text">
               r

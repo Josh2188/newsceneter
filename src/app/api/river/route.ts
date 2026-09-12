@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchRiver, type SourceId } from "@/lib/sources";
 
-export const revalidate = 60;
+// Final river order is randomized per request — do not CDN-cache the response.
+export const dynamic = "force-dynamic";
 
 const VALID: (SourceId | "all")[] = [
   "all",
@@ -35,7 +36,7 @@ export async function GET(req: NextRequest) {
       },
       {
         headers: {
-          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120",
+          "Cache-Control": "private, no-store",
         },
       }
     );
@@ -46,7 +47,7 @@ export async function GET(req: NextRequest) {
       {
         status: 500,
         headers: {
-          "Cache-Control": "public, s-maxage=10, stale-while-revalidate=30",
+          "Cache-Control": "private, no-store",
         },
       }
     );
