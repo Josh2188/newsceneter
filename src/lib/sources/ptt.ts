@@ -5,8 +5,8 @@ import {
   dedupeUrls,
   looksLikeImageUrl,
 } from "../images";
-import { sampleN, shuffled } from "../shuffle";
-import type { Comment, FeedItem, Post, Source } from "./types";
+import { createRng, sampleN, shuffled, type Rng } from "../shuffle";
+import type { Comment, FeedFetchOpts, FeedItem, Post, Source } from "./types";
 
 const BASE = "https://www.ptt.cc";
 /** Popular Taiwan boards — each refresh randomly samples a subset. */
@@ -26,7 +26,9 @@ export const BOARDS = [
   "car",
 ] as const;
 const BOARDS_PER_REFRESH = 5;
-/** How far back (index pages) we may randomly dig on a board. */
+/** Extra boards when building a large river pool. */
+const BOARDS_PER_REFRESH_LARGE = 9;
+/** How far back (index pages) we may dig on a board. */
 const MAX_INDEX_OFFSET = 8;
 const LIST_REVALIDATE = 60;
 const ARTICLE_REVALIDATE = 180;
@@ -164,28 +166,51 @@ async function fetchBoardPage(
   );
 }
 
-/** Pick a random older index page number near the current head. */
-async function pickRandomPage(board: string): Promise<number> {
+/** Pick an older index page number near the current head (seeded). */
+async function pickPage(board: string, rng: Rng): Promise<number> {
   // 40% chance: stay on latest index.html
-  if (Math.random() < 0.4) return 0;
+  if (rng() < 0.4) return 0;
   try {
     const html = await pttFetch(`/bbs/${board}/index.html`, LIST_REVALIDATE);
     const prev = parsePrevIndexNum(html);
     if (prev == null || prev < 2) return 0;
-    const offset = 1 + Math.floor(Math.random() * MAX_INDEX_OFFSET);
+    const offset = 1 + Math.floor(rng() * MAX_INDEX_OFFSET);
     return Math.max(1, prev - offset + 1);
   } catch {
     return 0;
   }
 }
 
-async function fetchBoardIndex(board: string, poolSize: number): Promise<FeedItem[]> {
-  const page = await pickRandomPage(board);
-  const items = await fetchBoardPage(board, page);
-  // If older page empty, fall back to latest
-  const pool =
-    items.length > 0 ? items : page !== 0 ? await fetchBoardPage(board, 0) : items;
-  return sampleN(pool, Math.min(poolSize, pool.length));
+/**
+ * Fetch board list into pool. For large poolSize, pull latest + one older page.
+ */
+async function fetchBoardIndex(
+  board: string,
+  poolSize: number,
+  rng: Rng
+): Promise<FeedItem[]> {
+  const byId = new Map<string, FeedItem>();
+  const add = (batch: FeedItem[]) => {
+    for (const it of batch) {
+      if (!byId.has(it.id)) byId.set(it.id, it);
+    }
+  };
+
+  // Always include latest index for freshness
+  add(await fetchBoardPage(board, 0));
+
+  // When we need a deeper pool, also pull one seeded older page
+  if (poolSize > 8) {
+    const older = await pickPage(board, rng);
+    if (older > 0) add(await fetchBoardPage(board, older));
+  } else {
+    // Small request: maybe sample from a single (possibly older) page
+    const page = await pickPage(board, rng);
+    if (page > 0) add(await fetchBoardPage(board, page));
+  }
+
+  const pool = [...byId.values()];
+  return sampleN(pool, Math.min(poolSize, pool.length), rng);
 }
 
 function parsePushes($: cheerio.CheerioAPI): Comment[] {
@@ -334,17 +359,22 @@ async function fetchArticle(board: string, id: string): Promise<Post | null> {
 export const pttSource: Source = {
   id: "ptt",
   label: "PTT",
-  async fetchFeed(limit = 20) {
-    const boardPool = shuffled([...BOARDS]);
+  async fetchFeed(limit = 20, opts?: FeedFetchOpts) {
+    const rng = createRng(opts?.seed ?? `ptt-${limit}`);
+    const boardCount =
+      limit >= 60
+        ? BOARDS_PER_REFRESH_LARGE
+        : BOARDS_PER_REFRESH;
+    const boardPool = shuffled([...BOARDS], rng);
     const picked = boardPool.slice(
       0,
-      Math.min(BOARDS_PER_REFRESH, boardPool.length)
+      Math.min(boardCount, boardPool.length)
     );
-    // Shuffle fetch order for extra entropy (Promise.all still parallel)
-    const ordered = shuffled(picked);
-    const perBoard = Math.max(4, Math.ceil((limit * 1.5) / ordered.length));
+    // Seeded shuffle of fetch order (Promise.all still parallel)
+    const ordered = shuffled(picked, rng);
+    const perBoard = Math.max(6, Math.ceil((limit * 1.4) / ordered.length));
     const results = await Promise.all(
-      ordered.map((b) => fetchBoardIndex(b, perBoard))
+      ordered.map((b) => fetchBoardIndex(b, perBoard, rng))
     );
     const byId = new Map<string, FeedItem>();
     for (const batch of results) {
@@ -352,7 +382,12 @@ export const pttSource: Source = {
         if (!byId.has(item.id)) byId.set(item.id, item);
       }
     }
-    return sampleN([...byId.values()], Math.min(limit * 2, byId.size));
+    // Return up to ~2× limit so river interleave has depth; no invent
+    return sampleN(
+      [...byId.values()],
+      Math.min(Math.max(limit, Math.ceil(limit * 1.5)), byId.size),
+      rng
+    );
   },
   async fetchPost(params) {
     const board = params.board;

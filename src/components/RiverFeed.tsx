@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 import type { FeedItem } from "@/lib/sources/types";
 import { clusterConfluence, detailHref } from "@/lib/confluence";
@@ -23,14 +29,21 @@ import { CinematicDrift, useCinematicPref } from "./CinematicDrift";
 
 type RiverErr = { source: string; message: string };
 
+const PAGE_SIZE = 40;
+
 export function RiverFeed() {
   const router = useRouter();
   const [filter, setFilter] = useState<FilterId>("all");
   const [items, setItems] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sourceErrors, setSourceErrors] = useState<RiverErr[]>([]);
   const [fetchedAt, setFetchedAt] = useState<string | null>(null);
+  const [seed, setSeed] = useState<string | null>(null);
+  const [nextOffset, setNextOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [total, setTotal] = useState<number | null>(null);
 
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const [unreadOnly, setUnreadOnly] = useState(false);
@@ -39,37 +52,153 @@ export function RiverFeed() {
   const [, setCinematicPref] = useCinematicPref();
   const [driftOpen, setDriftOpen] = useState(false);
 
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const loadingMoreRef = useRef(false);
+  const hasMoreRef = useRef(false);
+  const seedRef = useRef<string | null>(null);
+  const nextOffsetRef = useRef(0);
+  const filterRef = useRef(filter);
+
   useEffect(() => {
     setReadIds(loadReadIds());
   }, []);
 
-  const load = useCallback(async (source: FilterId, bust = false) => {
+  useEffect(() => {
+    hasMoreRef.current = hasMore;
+  }, [hasMore]);
+  useEffect(() => {
+    seedRef.current = seed;
+  }, [seed]);
+  useEffect(() => {
+    nextOffsetRef.current = nextOffset;
+  }, [nextOffset]);
+  useEffect(() => {
+    filterRef.current = filter;
+  }, [filter]);
+
+  const loadInitial = useCallback(async (source: FilterId, bust = false) => {
     setLoading(true);
+    setLoadingMore(false);
+    loadingMoreRef.current = false;
     setError(null);
+    setItems([]);
+    setSeed(null);
+    seedRef.current = null;
+    setNextOffset(0);
+    nextOffsetRef.current = 0;
+    setHasMore(false);
+    hasMoreRef.current = false;
+    setTotal(null);
     try {
-      const qs = new URLSearchParams({ source, limit: "40" });
+      const qs = new URLSearchParams({
+        source,
+        limit: String(PAGE_SIZE),
+        offset: "0",
+      });
       if (bust) qs.set("_", String(Date.now()));
       const res = await fetch(`/api/river?${qs.toString()}`);
       const data = await res.json();
       if (!res.ok || !data.ok) {
         throw new Error(data.error || "載入失敗");
       }
-      // Preserve server order: newest-first with source interleave
-      setItems(data.items || []);
+      const pageItems: FeedItem[] = data.items || [];
+      setItems(pageItems);
+      const usedSeed = typeof data.seed === "string" ? data.seed : null;
+      setSeed(usedSeed);
+      seedRef.current = usedSeed;
+      const nOff =
+        typeof data.nextOffset === "number"
+          ? data.nextOffset
+          : pageItems.length;
+      setNextOffset(nOff);
+      nextOffsetRef.current = nOff;
+      const more = Boolean(data.hasMore);
+      setHasMore(more);
+      hasMoreRef.current = more;
+      setTotal(typeof data.total === "number" ? data.total : null);
       setSourceErrors(Array.isArray(data.errors) ? data.errors : []);
       setFetchedAt(data.fetchedAt || null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "載入失敗");
       setItems([]);
       setSourceErrors([]);
+      setHasMore(false);
+      hasMoreRef.current = false;
     } finally {
       setLoading(false);
     }
   }, []);
 
+  const loadMore = useCallback(async () => {
+    if (loadingMoreRef.current || !hasMoreRef.current) return;
+    const currentSeed = seedRef.current;
+    if (!currentSeed) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    try {
+      const qs = new URLSearchParams({
+        source: filterRef.current,
+        limit: String(PAGE_SIZE),
+        offset: String(nextOffsetRef.current),
+        seed: currentSeed,
+      });
+      const res = await fetch(`/api/river?${qs.toString()}`);
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || "載入失敗");
+      }
+      const pageItems: FeedItem[] = data.items || [];
+      setItems((prev) => {
+        const seen = new Set(prev.map((it) => it.id));
+        const appended = pageItems.filter((it) => !seen.has(it.id));
+        return appended.length ? [...prev, ...appended] : prev;
+      });
+      const nOff =
+        typeof data.nextOffset === "number"
+          ? data.nextOffset
+          : nextOffsetRef.current + pageItems.length;
+      setNextOffset(nOff);
+      nextOffsetRef.current = nOff;
+      const more = Boolean(data.hasMore);
+      setHasMore(more);
+      hasMoreRef.current = more;
+      if (typeof data.total === "number") setTotal(data.total);
+      if (Array.isArray(data.errors) && data.errors.length) {
+        setSourceErrors(data.errors);
+      }
+      if (data.fetchedAt) setFetchedAt(data.fetchedAt);
+    } catch (e) {
+      // Keep existing items; surface a soft error in source banner area
+      setSourceErrors([
+        {
+          source: "all",
+          message: e instanceof Error ? e.message : "載入更多失敗",
+        },
+      ]);
+    } finally {
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
+    }
+  }, []);
+
   useEffect(() => {
-    load(filter);
-  }, [filter, load]);
+    loadInitial(filter);
+  }, [filter, loadInitial]);
+
+  // IntersectionObserver sentinel → append next page
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        const hit = entries.some((e) => e.isIntersecting);
+        if (hit) loadMore();
+      },
+      { root: null, rootMargin: "400px 0px", threshold: 0 }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [loadMore, loading, hasMore, items.length]);
 
   const thermo = useMemo(() => computeThermometer(items), [items]);
   const confluenceMap = useMemo(() => clusterConfluence(items), [items]);
@@ -79,6 +208,12 @@ export function RiverFeed() {
     for (const it of items) m.set(it.id, it);
     return m;
   }, [items]);
+
+  /** First-page slice for hero / ticker so they stay stable while scrolling. */
+  const firstPageItems = useMemo(
+    () => items.slice(0, PAGE_SIZE),
+    [items]
+  );
 
   const filtered = useMemo(() => {
     let list = items;
@@ -93,12 +228,17 @@ export function RiverFeed() {
 
   const hero = useMemo(() => {
     if (imageWall || filtered.length === 0) return null;
-    return pickHeroItem(filtered, confluenceMap);
-  }, [filtered, confluenceMap, imageWall]);
+    // Prefer first-page items for hero stability
+    const firstFiltered = filtered.filter((it) =>
+      firstPageItems.some((f) => f.id === it.id)
+    );
+    const pool = firstFiltered.length > 0 ? firstFiltered : filtered;
+    return pickHeroItem(pool, confluenceMap);
+  }, [filtered, confluenceMap, imageWall, firstPageItems]);
 
   const tickerItems = useMemo(
-    () => pickTickerItems(items, confluenceMap, 8),
-    [items, confluenceMap],
+    () => pickTickerItems(firstPageItems, confluenceMap, 8),
+    [firstPageItems, confluenceMap]
   );
 
   const listItems = useMemo(() => {
@@ -165,10 +305,25 @@ export function RiverFeed() {
     return () => window.removeEventListener("keydown", onKey);
   }, [handleRandomDive, driftOpen, openDrift]);
 
+  const countLabel = loading
+    ? "載入中…"
+    : error
+      ? "發生錯誤"
+      : `已載入 ${filtered.length} 則${
+          unreadOnly || imageWall ? `（篩自 ${items.length}）` : ""
+        }${
+          total != null && !unreadOnly && !imageWall
+            ? ` / 池 ${total}`
+            : ""
+        } · 新到舊 · 來源穿插`;
+
   return (
     <div className="space-y-4">
       {!loading && !error && items.length > 0 && (
-        <NowRiver stats={thermo} topItem={tickerItems[0] || items[0]} />
+        <NowRiver
+          stats={thermo}
+          topItem={tickerItems[0] || firstPageItems[0] || items[0]}
+        />
       )}
 
       <FilterChips value={filter} onChange={setFilter} />
@@ -200,20 +355,10 @@ export function RiverFeed() {
       )}
 
       <div className="flex items-center justify-between text-[11px] text-river-muted">
-        <span>
-          {loading
-            ? "載入中…"
-            : error
-              ? "發生錯誤"
-              : `共 ${filtered.length} 則${
-                  unreadOnly || imageWall
-                    ? `（篩自 ${items.length}）`
-                    : ""
-                } · 新到舊 · 來源穿插`}
-        </span>
+        <span>{countLabel}</span>
         <button
           type="button"
-          onClick={() => load(filter, true)}
+          onClick={() => loadInitial(filter, true)}
           className="rounded border border-river-border px-2 py-1 hover:border-river-accent hover:text-river-accent"
           disabled={loading}
         >
@@ -238,7 +383,7 @@ export function RiverFeed() {
           <button
             type="button"
             className="ml-3 underline"
-            onClick={() => load(filter, true)}
+            onClick={() => loadInitial(filter, true)}
           >
             重試
           </button>
@@ -302,6 +447,25 @@ export function RiverFeed() {
               />
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Infinite-scroll sentinel */}
+      {!loading && !error && items.length > 0 && (
+        <div ref={sentinelRef} className="py-4 text-center text-[11px] text-river-muted">
+          {loadingMore ? (
+            <span className="inline-flex items-center gap-2">
+              <span
+                className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-river-border border-t-river-accent"
+                aria-hidden
+              />
+              載入更多…
+            </span>
+          ) : hasMore ? (
+            <span className="opacity-60">繼續往下滾動載入更多</span>
+          ) : (
+            <span>已經到底了</span>
+          )}
         </div>
       )}
 

@@ -1,7 +1,37 @@
+/** Hash a string/number seed into a 32-bit unsigned int. */
+export function hashSeed(seed: string | number): number {
+  const s = String(seed);
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/** Mulberry32 PRNG — same seed → same sequence. */
+export function createRng(seed: string | number): () => number {
+  let a = hashSeed(seed) || 1;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+export type Rng = () => number;
+
+function rngOrMath(rng?: Rng): Rng {
+  return rng ?? Math.random;
+}
+
 /** Fisher–Yates shuffle in place; returns the same array. */
-export function shuffleInPlace<T>(arr: T[]): T[] {
+export function shuffleInPlace<T>(arr: T[], rng?: Rng): T[] {
+  const rand = rngOrMath(rng);
   for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(rand() * (i + 1));
     const tmp = arr[i]!;
     arr[i] = arr[j]!;
     arr[j] = tmp;
@@ -10,18 +40,19 @@ export function shuffleInPlace<T>(arr: T[]): T[] {
 }
 
 /** Copy then Fisher–Yates shuffle. */
-export function shuffled<T>(arr: readonly T[]): T[] {
-  return shuffleInPlace([...arr]);
+export function shuffled<T>(arr: readonly T[], rng?: Rng): T[] {
+  return shuffleInPlace([...arr], rng);
 }
 
 /** Sample up to `n` items without replacement (order randomized). */
-export function sampleN<T>(arr: readonly T[], n: number): T[] {
+export function sampleN<T>(arr: readonly T[], n: number, rng?: Rng): T[] {
   if (n <= 0) return [];
-  if (n >= arr.length) return shuffled(arr);
+  if (n >= arr.length) return shuffled(arr, rng);
+  const rand = rngOrMath(rng);
   const copy = [...arr];
   // Partial Fisher–Yates: only need first n
   for (let i = 0; i < n; i++) {
-    const j = i + Math.floor(Math.random() * (copy.length - i));
+    const j = i + Math.floor(rand() * (copy.length - i));
     const tmp = copy[i]!;
     copy[i] = copy[j]!;
     copy[j] = tmp;
@@ -33,13 +64,14 @@ export function sampleN<T>(arr: readonly T[], n: number): T[] {
  * Randomly pick the next item from non-empty source queues so batches
  * interleave unpredictably (roughly balanced when sizes are similar).
  */
-export function interleaveRandom<T>(batches: T[][]): T[] {
+export function interleaveRandom<T>(batches: T[][], rng?: Rng): T[] {
+  const rand = rngOrMath(rng);
   const queues = batches
     .map((b) => [...b])
     .filter((q) => q.length > 0);
   const out: T[] = [];
   while (queues.length > 0) {
-    const qi = Math.floor(Math.random() * queues.length);
+    const qi = Math.floor(rand() * queues.length);
     const q = queues[qi]!;
     out.push(q.shift()!);
     if (q.length === 0) {
@@ -62,7 +94,7 @@ function createdAtMs(iso: string): number {
 /**
  * Interleave source batches so newer items rise overall, while preferring
  * a different source than the last emitted (PTT / Threads / news weave).
- * Each batch is sorted by createdAt desc (on a copy).
+ * Each batch is sorted by createdAt desc (on a copy). Deterministic — no RNG.
  */
 export function interleaveByRecency<
   T extends { source: string; createdAt: string },
@@ -104,11 +136,14 @@ export function interleaveByRecency<
 /**
  * Shuffle within soft recency buckets (last 24h / 3d / older) so order
  * isn't chronological but ancient posts don't dominate the head.
+ * Pass `rng` (from createRng(seed)) for stable pagination.
  */
 export function softRecencyShuffle<T extends Timed>(
   items: readonly T[],
-  now = Date.now()
+  now = Date.now(),
+  rng?: Rng
 ): T[] {
+  const rand = rngOrMath(rng);
   const buckets: T[][] = [[], [], []];
   for (const item of items) {
     const t = Date.parse(item.createdAt);
@@ -117,7 +152,7 @@ export function softRecencyShuffle<T extends Timed>(
     else if (age <= 3 * DAY) buckets[1]!.push(item);
     else buckets[2]!.push(item);
   }
-  for (const b of buckets) shuffleInPlace(b);
+  for (const b of buckets) shuffleInPlace(b, rand);
   // Randomly interleave buckets with a soft bias toward fresher ones
   // by giving newer buckets more weight when picking.
   const queues = buckets.filter((b) => b.length > 0);
@@ -129,7 +164,7 @@ export function softRecencyShuffle<T extends Timed>(
       return idx === 0 ? 4 : idx === 1 ? 2 : 1;
     });
     const total = weights.reduce((a, b) => a + b, 0);
-    let r = Math.random() * total;
+    let r = rand() * total;
     let pick = 0;
     for (let i = 0; i < weights.length; i++) {
       r -= weights[i]!;

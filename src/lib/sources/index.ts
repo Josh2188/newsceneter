@@ -1,5 +1,5 @@
 import { withTimeout } from "../cache";
-import { interleaveByRecency } from "../shuffle";
+import { createRng, interleaveByRecency } from "../shuffle";
 import type { FeedItem, Post, Source, SourceId } from "./types";
 import { pttSource } from "./ptt";
 import { threadsSource, threadsLastError } from "./threads";
@@ -7,6 +7,9 @@ import { newsSource, newsLastError } from "./news";
 
 /** Don't let one slow source (e.g. Threads) hold the whole river. */
 const SOURCE_TIMEOUT_MS = 4_000;
+
+/** Target interleaved pool size for pagination (aim 150–300). */
+const POOL_TARGET = 240;
 
 /** Active sources merged into the default river. */
 export const sources: Source[] = [
@@ -28,6 +31,12 @@ export type RiverError = { source: SourceId; message: string };
 export type RiverResult = {
   items: FeedItem[];
   errors: RiverError[];
+  /** Full interleaved pool size before slicing. */
+  total: number;
+  hasMore: boolean;
+  nextOffset: number;
+  /** Echo / generated seed so page N+1 continues the same order. */
+  seed: string;
 };
 
 function byCreatedAtDesc(a: FeedItem, b: FeedItem): number {
@@ -38,16 +47,30 @@ function byCreatedAtDesc(a: FeedItem, b: FeedItem): number {
   return mb - ma;
 }
 
+export function makeRiverSeed(): string {
+  return `${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`;
+}
+
 /**
  * Merge active sources into a newest-first river with source interleave.
- * Over-fetches per source; sorts each batch by recency, weaves PTT /
- * Threads / news, then dedupes — no final shuffle.
+ * Builds a large interleaved pool (under source timeouts), then slices by
+ * offset/limit. Same seed → same pool order so pagination stays stable.
+ * Order is recency + interleave; seed only stabilizes any remaining
+ * randomness in per-source pool construction.
  */
 export async function fetchRiver(options?: {
   source?: SourceId | "all";
   limit?: number;
+  offset?: number;
+  seed?: string | number;
+  /** Override internal pool target (default ~240). */
+  poolSize?: number;
 }): Promise<RiverResult> {
-  const limit = options?.limit ?? 60;
+  const limit = Math.max(1, options?.limit ?? 40);
+  const offset = Math.max(0, options?.offset ?? 0);
+  const seed = options?.seed != null && String(options.seed) !== ""
+    ? String(options.seed)
+    : makeRiverSeed();
   const filter =
     options?.source && options.source !== "all" ? options.source : null;
 
@@ -55,17 +78,26 @@ export async function fetchRiver(options?: {
     ? ([sourceMap[filter]].filter(Boolean) as Source[])
     : sources;
 
-  // Over-fetch 2–3× so sampling has room to vary
-  const perSourcePool = Math.max(
-    12,
-    Math.ceil((limit * 2.5) / Math.max(selected.length, 1))
+  const poolTarget = Math.max(
+    options?.poolSize ?? POOL_TARGET,
+    offset + limit,
+    60
   );
+
+  // Over-fetch per source so interleave has a deep pool
+  const perSourcePool = Math.max(
+    40,
+    Math.ceil((poolTarget * 1.2) / Math.max(selected.length, 1))
+  );
+
+  // Touch rng so seed is validated; sources get the same string seed
+  createRng(seed);
 
   const batches = await Promise.all(
     selected.map(async (s) => {
       try {
         return await withTimeout(
-          s.fetchFeed(perSourcePool),
+          s.fetchFeed(perSourcePool, { seed }),
           SOURCE_TIMEOUT_MS,
           () => {
             console.warn(
@@ -95,22 +127,25 @@ export async function fetchRiver(options?: {
     .filter((b) => b.length > 0);
 
   // Single-source filter: keep chronological desc (no multi-source weave needed)
-  let items =
+  let pool =
     sorted.length <= 1
       ? (sorted[0] ?? [])
       : interleaveByRecency(sorted);
 
   // Dedupe by id (same post could appear twice across caches)
   const seen = new Set<string>();
-  items = items.filter((it) => {
+  pool = pool.filter((it) => {
     if (seen.has(it.id)) return false;
     seen.add(it.id);
     return true;
   });
 
-  items = items.slice(0, limit);
+  const total = pool.length;
+  const items = pool.slice(offset, offset + limit);
+  const nextOffset = offset + items.length;
+  const hasMore = nextOffset < total;
 
-  return { items, errors };
+  return { items, errors, total, hasMore, nextOffset, seed };
 }
 
 export async function fetchPostDetail(

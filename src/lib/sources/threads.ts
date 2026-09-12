@@ -3,8 +3,8 @@ import { join } from "path";
 import { durableCached, getCached, setCache, withTimeout } from "../cache";
 import { UA_CHROME, UA_GOOGLEBOT } from "../html";
 import { dedupeUrls, pickBestCandidate } from "../images";
-import { sampleN, shuffled, softRecencyShuffle } from "../shuffle";
-import type { Comment, FeedItem, Post, Source } from "./types";
+import { createRng, sampleN, shuffled, softRecencyShuffle, type Rng } from "../shuffle";
+import type { Comment, FeedFetchOpts, FeedItem, Post, Source } from "./types";
 import bundledCacheImport from "../../data/threads-cache.json";
 
 export const CACHE_TTL = 60_000;
@@ -35,6 +35,8 @@ export const DEFAULT_USERS = [
   "foodie.map",
 ];
 const USERS_PER_REFRESH = 5;
+/** More accounts when building a large river pool. */
+const USERS_PER_REFRESH_LARGE = 10;
 
 export type ThreadsCacheFile = {
   updatedAt: string;
@@ -564,22 +566,26 @@ export function hasCjk(item: FeedItem): boolean {
  * Soft-prefer CJK: shuffle heavily among CJK pool first, fill with non-CJK
  * only if under limit. Does NOT return chronological head.
  */
-export function preferCjkItems(items: FeedItem[], limit: number): FeedItem[] {
+export function preferCjkItems(
+  items: FeedItem[],
+  limit: number,
+  rng?: Rng
+): FeedItem[] {
   const cjk: FeedItem[] = [];
   const other: FeedItem[] = [];
   for (const item of items) {
     if (hasCjk(item)) cjk.push(item);
     else other.push(item);
   }
-  const cjkShuffled = softRecencyShuffle(cjk);
+  const cjkShuffled = softRecencyShuffle(cjk, Date.now(), rng);
   if (cjkShuffled.length >= limit) {
-    return sampleN(cjkShuffled, limit);
+    return sampleN(cjkShuffled, limit, rng);
   }
   const need = limit - cjkShuffled.length;
-  return shuffled([...cjkShuffled, ...sampleN(other, need)]);
+  return shuffled([...cjkShuffled, ...sampleN(other, need, rng)], rng);
 }
 
-function applyBundledCache(limit: number): FeedItem[] {
+function applyBundledCache(limit: number, rng?: Rng): FeedItem[] {
   const bundled = loadBundledCache();
   if (!bundled?.items?.length) return [];
 
@@ -594,7 +600,11 @@ function applyBundledCache(limit: number): FeedItem[] {
     }
   }
 
-  const items = preferCjkItems(softRecencyShuffle(bundled.items), limit);
+  const items = preferCjkItems(
+    softRecencyShuffle(bundled.items, Date.now(), rng),
+    limit,
+    rng
+  );
 
   console.warn(
     `[threads] 「Threads 即時抓取受限，已顯示快取」 (${items.length} items, updatedAt=${bundled.updatedAt})`
@@ -755,15 +765,14 @@ async function fetchThreadsPostUncached(
 export const threadsSource: Source = {
   id: "threads",
   label: "Threads",
-  async fetchFeed(limit = 20) {
+  async fetchFeed(limit = 20, opts?: FeedFetchOpts) {
     threadsLastError = null;
-    // Per-user scrapes stay durable-cached; final sample/shuffle runs every request
-    // so CDN / Data Cache cannot freeze identical order.
-    const allUsers = shuffled(getUsernames());
-    const users = allUsers.slice(
-      0,
-      Math.min(USERS_PER_REFRESH, allUsers.length)
-    );
+    const rng = createRng(opts?.seed ?? `threads-${limit}`);
+    // Per-user scrapes stay durable-cached; seeded sample for stable pages.
+    const userCount =
+      limit >= 60 ? USERS_PER_REFRESH_LARGE : USERS_PER_REFRESH;
+    const allUsers = shuffled(getUsernames(), rng);
+    const users = allUsers.slice(0, Math.min(userCount, allUsers.length));
     const batches = await Promise.all(users.map((u) => fetchUserPosts(u)));
     const byId = new Map<string, FeedItem>();
     for (const batch of batches) {
@@ -771,13 +780,38 @@ export const threadsSource: Source = {
         if (!byId.has(item.id)) byId.set(item.id, item);
       }
     }
+    const want = Math.max(limit, Math.ceil(limit * 1.5));
     let items = preferCjkItems(
-      softRecencyShuffle([...byId.values()]),
-      Math.max(limit, Math.ceil(limit * 1.5))
+      softRecencyShuffle([...byId.values()], Date.now(), rng),
+      want,
+      rng
     );
 
+    // Top up from bundled cache when live scrape is thin
+    if (items.length < want) {
+      const cached = applyBundledCache(want, rng);
+      for (const it of cached) {
+        if (!byId.has(it.id)) {
+          byId.set(it.id, it);
+        }
+      }
+      if (items.length === 0 && cached.length > 0) {
+        items = preferCjkItems(
+          softRecencyShuffle([...byId.values()], Date.now(), rng),
+          want,
+          rng
+        );
+      } else if (cached.length > 0) {
+        items = preferCjkItems(
+          softRecencyShuffle([...byId.values()], Date.now(), rng),
+          want,
+          rng
+        );
+      }
+    }
+
     if (items.length === 0) {
-      items = applyBundledCache(Math.max(limit, Math.ceil(limit * 1.5)));
+      items = applyBundledCache(want, rng);
       if (items.length === 0) {
         threadsLastError =
           "Threads 公開頁面無法取得貼文（可能被封鎖或帳號無效），且無可用快取";
@@ -785,7 +819,7 @@ export const threadsSource: Source = {
         return [];
       }
     }
-    return sampleN(items, Math.min(limit * 2, items.length));
+    return sampleN(items, Math.min(want, items.length), rng);
   },
   async fetchPost(params) {
     const id = params.id;

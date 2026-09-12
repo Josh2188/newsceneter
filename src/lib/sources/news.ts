@@ -11,8 +11,8 @@ import {
   dedupeUrls,
   isJunkImageUrl,
 } from "../images";
-import { sampleN, shuffled, softRecencyShuffle } from "../shuffle";
-import type { FeedItem, Post, Source } from "./types";
+import { createRng, sampleN, shuffled, softRecencyShuffle } from "../shuffle";
+import type { FeedFetchOpts, FeedItem, Post, Source } from "./types";
 
 const FEED_REVALIDATE = 60;
 const SCRAPE_REVALIDATE = 8 * 60;
@@ -82,7 +82,7 @@ function extractDescription(block: string): string {
 function parseRss(xml: string, channel: string): FeedItem[] {
   const items: FeedItem[] = [];
   const blocks = xml.match(/<item[\s\S]*?<\/item>/gi) || [];
-  for (const block of blocks.slice(0, 30)) {
+  for (const block of blocks.slice(0, 50)) {
     const title = extractTag(block, "title");
     const link = extractLink(block);
     const desc = extractDescription(block);
@@ -509,10 +509,11 @@ function buildNewsBody(opts: {
 export const newsSource: Source = {
   id: "news",
   label: "新聞",
-  async fetchFeed(limit = 20) {
+  async fetchFeed(limit = 20, opts?: FeedFetchOpts) {
     newsLastError = null;
-    // Raw RSS per channel is durable-cached; sample + shuffle every request
-    const feedOrder = shuffled(FEEDS);
+    const rng = createRng(opts?.seed ?? `news-${limit}`);
+    // Raw RSS per channel is durable-cached; seeded sample for stable pages
+    const feedOrder = shuffled(FEEDS, rng);
     const results = await Promise.all(
       feedOrder.map((f) => fetchOneFeed(f.channel, f.url))
     );
@@ -522,10 +523,10 @@ export const newsSource: Source = {
       console.error("[news]", newsLastError);
       return [];
     }
-    // Sample roughly evenly across feeds, then soft-recency + final shuffle
-    const perFeed = Math.max(4, Math.ceil((limit * 2) / nonEmpty.length));
+    // Pull more per feed into pool for infinite scroll depth
+    const perFeed = Math.max(8, Math.ceil((limit * 1.6) / nonEmpty.length));
     const sampled = nonEmpty.map((batch) =>
-      sampleN(batch, Math.min(perFeed, batch.length))
+      sampleN(batch, Math.min(perFeed, batch.length), rng)
     );
     const byId = new Map<string, FeedItem>();
     for (const batch of sampled) {
@@ -533,8 +534,12 @@ export const newsSource: Source = {
         if (!byId.has(item.id)) byId.set(item.id, item);
       }
     }
-    const pool = softRecencyShuffle([...byId.values()]);
-    return sampleN(pool, Math.min(limit * 2, pool.length));
+    const pool = softRecencyShuffle([...byId.values()], Date.now(), rng);
+    return sampleN(
+      pool,
+      Math.min(Math.max(limit, Math.ceil(limit * 1.5)), pool.length),
+      rng
+    );
   },
   async fetchPost(params) {
     const url = (params.url || "").trim();

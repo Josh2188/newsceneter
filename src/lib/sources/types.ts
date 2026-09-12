@@ -38,9 +38,14 @@ export interface Post extends FeedItem {
   isStub?: boolean;
 }
 
+export type FeedFetchOpts = {
+  /** Stabilize any remaining randomness for paginated river slices. */
+  seed?: string | number;
+};
+
 export interface Source {
   id: SourceId;
   label: string;
-  fetchFeed(limit?: number): Promise<FeedItem[]>;
+  fetchFeed(limit?: number, opts?: FeedFetchOpts): Promise<FeedItem[]>;
   fetchPost?(params: Record<string, string>): Promise<Post | null>;
 }
