@@ -54,6 +54,53 @@ const DAY = 24 * HOUR;
 
 type Timed = { createdAt: string };
 
+function createdAtMs(iso: string): number {
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? t : -Infinity;
+}
+
+/**
+ * Interleave source batches so newer items rise overall, while preferring
+ * a different source than the last emitted (PTT / Threads / news weave).
+ * Each batch is sorted by createdAt desc (on a copy).
+ */
+export function interleaveByRecency<
+  T extends { source: string; createdAt: string },
+>(batches: T[][]): T[] {
+  const queues = batches
+    .map((b) =>
+      [...b].sort((a, b) => createdAtMs(b.createdAt) - createdAtMs(a.createdAt)),
+    )
+    .filter((q) => q.length > 0);
+
+  const out: T[] = [];
+  let lastSource: string | null = null;
+
+  while (queues.length > 0) {
+    const preferOther = queues.some((q) => q[0]!.source !== lastSource);
+
+    let bestQi = -1;
+    let bestTime = -Infinity;
+    for (let i = 0; i < queues.length; i++) {
+      const q = queues[i]!;
+      if (preferOther && q[0]!.source === lastSource) continue;
+      const t = createdAtMs(q[0]!.createdAt);
+      if (t > bestTime) {
+        bestTime = t;
+        bestQi = i;
+      }
+    }
+
+    const q = queues[bestQi]!;
+    const item = q.shift()!;
+    out.push(item);
+    lastSource = item.source;
+    if (q.length === 0) queues.splice(bestQi, 1);
+  }
+
+  return out;
+}
+
 /**
  * Shuffle within soft recency buckets (last 24h / 3d / older) so order
  * isn't chronological but ancient posts don't dominate the head.

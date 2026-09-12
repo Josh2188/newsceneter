@@ -1,10 +1,5 @@
 import { withTimeout } from "../cache";
-import {
-  interleaveRandom,
-  sampleN,
-  shuffled,
-  softRecencyShuffle,
-} from "../shuffle";
+import { interleaveByRecency } from "../shuffle";
 import type { FeedItem, Post, Source, SourceId } from "./types";
 import { pttSource } from "./ptt";
 import { threadsSource, threadsLastError } from "./threads";
@@ -35,10 +30,18 @@ export type RiverResult = {
   errors: RiverError[];
 };
 
+function byCreatedAtDesc(a: FeedItem, b: FeedItem): number {
+  const ta = Date.parse(a.createdAt);
+  const tb = Date.parse(b.createdAt);
+  const ma = Number.isFinite(ta) ? ta : -Infinity;
+  const mb = Number.isFinite(tb) ? tb : -Infinity;
+  return mb - ma;
+}
+
 /**
- * Merge active sources into a randomized river.
- * Over-fetches per source, soft-recency shuffles each batch, interleaves
- * across sources, then final shuffle — order differs every request.
+ * Merge active sources into a newest-first river with source interleave.
+ * Over-fetches per source; sorts each batch by recency, weaves PTT /
+ * Threads / news, then dedupes — no final shuffle.
  */
 export async function fetchRiver(options?: {
   source?: SourceId | "all";
@@ -86,17 +89,16 @@ export async function fetchRiver(options?: {
     errors.push({ source: "news", message: newsLastError });
   }
 
-  // Soft-recency shuffle within each source, then balance via interleave
-  const prepared = batches
-    .map((batch) => softRecencyShuffle(batch))
+  // Sort each source batch newest-first
+  const sorted = batches
+    .map((batch) => [...batch].sort(byCreatedAtDesc))
     .filter((b) => b.length > 0);
 
-  // Aim for roughly equal representation: take up to ceil(limit/n) from each
-  // after soft shuffle, then interleave randomly
-  const targetPer = Math.ceil(limit / Math.max(prepared.length, 1));
-  const trimmed = prepared.map((b) => b.slice(0, Math.max(targetPer, 8)));
-
-  let items = interleaveRandom(trimmed);
+  // Single-source filter: keep chronological desc (no multi-source weave needed)
+  let items =
+    sorted.length <= 1
+      ? (sorted[0] ?? [])
+      : interleaveByRecency(sorted);
 
   // Dedupe by id (same post could appear twice across caches)
   const seen = new Set<string>();
@@ -106,16 +108,7 @@ export async function fetchRiver(options?: {
     return true;
   });
 
-  // If still short, fill from leftover pool randomly
-  if (items.length < limit) {
-    const used = new Set(items.map((i) => i.id));
-    const leftovers = softRecencyShuffle(
-      batches.flat().filter((i) => !used.has(i.id))
-    );
-    items = [...items, ...leftovers];
-  }
-
-  items = shuffled(sampleN(items, limit));
+  items = items.slice(0, limit);
 
   return { items, errors };
 }

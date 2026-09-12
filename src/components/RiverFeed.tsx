@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { FeedItem } from "@/lib/sources/types";
-import { shuffled } from "@/lib/shuffle";
 import { clusterConfluence, detailHref } from "@/lib/confluence";
 import { computeThermometer } from "@/lib/thermometer";
 import { pickHeroItem, pickTickerItems } from "@/lib/rank";
@@ -55,8 +54,8 @@ export function RiverFeed() {
       if (!res.ok || !data.ok) {
         throw new Error(data.error || "載入失敗");
       }
-      // Server already randomizes; light client reshuffle adds browser entropy
-      setItems(shuffled(data.items || []));
+      // Preserve server order: newest-first with source interleave
+      setItems(data.items || []);
       setSourceErrors(Array.isArray(data.errors) ? data.errors : []);
       setFetchedAt(data.fetchedAt || null);
     } catch (e) {
@@ -210,7 +209,7 @@ export function RiverFeed() {
                   unreadOnly || imageWall
                     ? `（篩自 ${items.length}）`
                     : ""
-                } · 隨機混流`}
+                } · 新到舊 · 來源穿插`}
         </span>
         <button
           type="button"
