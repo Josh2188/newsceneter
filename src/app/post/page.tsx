@@ -4,6 +4,7 @@ import { fetchPostDetail, type SourceId } from "@/lib/sources";
 import { formatAbsolute } from "@/lib/format";
 import { SourceBadge } from "@/components/SourceBadge";
 import { MarkRead } from "@/components/MarkRead";
+import { PostBody } from "@/components/PostBody";
 
 export const dynamic = "force-dynamic";
 
@@ -108,38 +109,7 @@ export default async function PostPage({
         </div>
       </div>
 
-      <div className="prose-bbs glass-panel mb-8 rounded-xl p-4 whitespace-pre-wrap">
-        {post.body}
-      </div>
-
-      {post.images && post.images.length > 0 && (
-        <section className="mb-8" aria-label="文章圖片">
-          <h2 className="mb-3 font-mono text-sm font-semibold text-river-muted">
-            圖片（{post.images.length}）
-          </h2>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {post.images.map((src) => (
-              <a
-                key={src}
-                href={src}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="glass-panel card-lift block overflow-hidden rounded-xl"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={src}
-                  alt=""
-                  loading="lazy"
-                  referrerPolicy="no-referrer"
-                  className="max-h-[480px] w-full object-contain"
-                  style={{ maxWidth: "100%" }}
-                />
-              </a>
-            ))}
-          </div>
-        </section>
-      )}
+      <PostBody body={post.body} source={post.source} images={post.images} />
 
       <section>
         <h2 className="mb-3 font-mono text-sm font-semibold text-river-muted">
@@ -164,37 +134,60 @@ export default async function PostPage({
           </p>
         ) : (
           <ul className="space-y-2">
-            {comments.map((c) => (
-              <li
-                key={c.id}
-                className="glass-panel rounded-lg px-3 py-2 font-mono text-[12px]"
-              >
-                <span
-                  className={
-                    c.type === "push"
-                      ? "text-river-ptt"
-                      : c.type === "boo"
-                        ? "text-red-500"
-                        : "text-river-muted"
-                  }
+            {comments.map((c) => {
+              const mark =
+                c.type === "push"
+                  ? "推"
+                  : c.type === "boo"
+                    ? "噓"
+                    : c.type === "arrow"
+                      ? "→"
+                      : "·";
+              const markCls =
+                c.type === "push"
+                  ? "text-river-ptt"
+                  : c.type === "boo"
+                    ? "text-red-500"
+                    : "text-river-muted";
+              if (post.source === "ptt") {
+                return (
+                  <li
+                    key={c.id}
+                    className="glass-panel rounded-lg px-3 py-2 text-[13px] leading-relaxed"
+                  >
+                    <span className={markCls}>{mark}</span>{" "}
+                    <span className="text-river-accent">{c.author}</span>
+                    <span className="whitespace-pre-wrap break-words text-river-text/85">
+                      : {c.body}
+                    </span>
+                    {c.createdAt && (
+                      <span className="ml-2 text-[11px] text-river-muted/60">
+                        {c.createdAt}
+                      </span>
+                    )}
+                  </li>
+                );
+              }
+              return (
+                <li
+                  key={c.id}
+                  className="glass-panel rounded-lg px-3 py-2.5 text-[14px] leading-relaxed"
                 >
-                  {c.type === "push"
-                    ? "推"
-                    : c.type === "boo"
-                      ? "噓"
-                      : c.type === "arrow"
-                        ? "→"
-                        : c.type === "comment"
-                          ? "·"
-                          : "·"}
-                </span>{" "}
-                <span className="text-river-accent">{c.author}</span>
-                <span className="text-river-text/85">: {c.body}</span>
-                {c.createdAt && (
-                  <span className="ml-2 text-river-muted/60">{c.createdAt}</span>
-                )}
-              </li>
-            ))}
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[12px]">
+                    <span className={markCls}>{mark}</span>
+                    <span className="font-medium text-river-accent">
+                      {c.author}
+                    </span>
+                    {c.createdAt && (
+                      <span className="text-river-muted/60">{c.createdAt}</span>
+                    )}
+                  </div>
+                  <p className="mt-1 whitespace-pre-wrap break-words text-river-text/90">
+                    {c.body}
+                  </p>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>

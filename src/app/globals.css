@@ -180,6 +180,51 @@ body {
   @apply whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-river-text/90;
 }
 
+.prose-article {
+  @apply break-words text-[15px] leading-relaxed text-river-text sm:text-base;
+}
+
+.prose-article p {
+  @apply mb-4 last:mb-0;
+  max-width: 42rem;
+}
+
+.prose-article a {
+  @apply break-all text-river-accent hover:underline;
+}
+
+.prose-article .note {
+  @apply mb-3 rounded-lg border border-river-border/70 bg-river-panel/50 px-3 py-2 text-[13px] leading-relaxed text-river-muted last:mb-0;
+}
+
+.prose-ptt {
+  @apply break-words text-[14px] leading-relaxed text-river-text/90;
+}
+
+.prose-ptt p {
+  @apply mb-3 last:mb-0;
+}
+
+.prose-ptt a {
+  @apply break-all text-river-accent hover:underline;
+}
+
+.prose-ptt .quote {
+  @apply mb-3 whitespace-pre-wrap border-l-2 border-river-ptt/40 pl-3 text-[13px] leading-relaxed text-river-muted last:mb-0;
+}
+
+.prose-ptt .note {
+  @apply mb-2 text-[12px] leading-relaxed text-river-muted/80 last:mb-0;
+}
+
+.prose-ptt hr {
+  @apply my-3 border-river-border/50;
+}
+
+.post-images h2 {
+  @apply font-mono text-sm font-semibold text-river-muted;
+}
+
 .glass-panel {
   background: var(--glass-bg);
   backdrop-filter: blur(14px) saturate(1.2);
