@@ -34,7 +34,7 @@ export default function RootLayout({
             </div>
           </header>
           <main className="flex-1">{children}</main>
-          <footer className="mt-10 border-t border-river-border/60 pt-4 text-center text-[10px] text-river-muted/80">
+          <footer className="mt-10 border-t border-river-border/60 pt-4 text-center text-[0.625rem] text-river-muted/80">
             PTT / Threads / 新聞為真實來源 · FB／IG 已停用 · 請友善使用來源站
           </footer>
         </div>

@@ -140,7 +140,7 @@ export function PostArticle({
                   return (
                     <li
                       key={c.id}
-                      className="glass-panel rounded-lg px-3 py-2 text-[13px] leading-relaxed"
+                      className="glass-panel rounded-lg px-3 py-2 text-[0.8125rem] leading-relaxed"
                     >
                       <span className={markCls}>{mark}</span>{" "}
                       <span className="text-river-accent">{c.author}</span>
@@ -148,7 +148,7 @@ export function PostArticle({
                         : {c.body}
                       </span>
                       {c.createdAt && (
-                        <span className="ml-2 text-[11px] text-river-muted/60">
+                        <span className="ml-2 text-[0.6875rem] text-river-muted/60">
                           {c.createdAt}
                         </span>
                       )}
@@ -158,9 +158,9 @@ export function PostArticle({
                 return (
                   <li
                     key={c.id}
-                    className="glass-panel rounded-lg px-3 py-2.5 text-[14px] leading-relaxed"
+                    className="glass-panel rounded-lg px-3 py-2.5 text-[0.875rem] leading-relaxed"
                   >
-                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[12px]">
+                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[0.75rem]">
                       <span className={markCls}>{mark}</span>
                       <span className="font-medium text-river-accent">
                         {c.author}

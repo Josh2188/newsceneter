@@ -20,7 +20,7 @@ export function RiverThermometer({ stats }: { stats: ThermometerStats }) {
             {emoji} {stats.label}
           </span>
         </span>
-        <span className="tabular-nums text-[10px] text-river-muted">
+        <span className="tabular-nums text-[0.625rem] text-river-muted">
           {stats.score}°
         </span>
       </div>
@@ -41,7 +41,7 @@ export function RiverThermometer({ stats }: { stats: ThermometerStats }) {
           }}
         />
       </div>
-      <p className="truncate text-[10px] leading-relaxed text-river-muted">
+      <p className="truncate text-[0.625rem] leading-relaxed text-river-muted">
         {stats.breakdown}
       </p>
     </div>

@@ -64,13 +64,13 @@ export function HeroSpotlight({
           <div className="hero-image-scrim absolute inset-0" />
           <div className="absolute inset-x-0 bottom-0 p-4 sm:p-5">
             <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-white/80">
-              <span className="rounded-full border border-river-accent/40 bg-river-accent/15 px-2 py-0.5 text-[10px] font-semibold text-river-accent shadow-glow">
+              <span className="rounded-full border border-river-accent/40 bg-river-accent/15 px-2 py-0.5 text-[0.625rem] font-semibold text-river-accent shadow-glow">
                 精選焦點
               </span>
               <SourceBadge source={item.source} />
               <span className="truncate opacity-80">{item.channel}</span>
               {groupSize >= 2 && (
-                <span className="rounded-full border border-river-threads/40 bg-river-threads/15 px-2 py-0.5 text-[10px] text-river-threads">
+                <span className="rounded-full border border-river-threads/40 bg-river-threads/15 px-2 py-0.5 text-[0.625rem] text-river-threads">
                   合流 ×{groupSize}
                 </span>
               )}
@@ -85,7 +85,7 @@ export function HeroSpotlight({
               {item.preview}
             </p>
             {(engBits.length > 0 || item.author) && (
-              <div className="mt-2.5 flex gap-3 text-[11px] text-white/55">
+              <div className="mt-2.5 flex gap-3 text-[0.6875rem] text-white/55">
                 <span>{item.author}</span>
                 {engBits.length > 0 && (
                   <span className="tabular-nums">{engBits.join(" · ")}</span>
@@ -97,13 +97,13 @@ export function HeroSpotlight({
       ) : (
         <div className="relative p-4 sm:p-5">
           <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-river-muted">
-            <span className="rounded-full border border-river-accent/40 bg-river-accent/15 px-2 py-0.5 text-[10px] font-semibold text-river-accent shadow-glow">
+            <span className="rounded-full border border-river-accent/40 bg-river-accent/15 px-2 py-0.5 text-[0.625rem] font-semibold text-river-accent shadow-glow">
               精選焦點
             </span>
             <SourceBadge source={item.source} />
             <span className="truncate">{item.channel}</span>
             {groupSize >= 2 && (
-              <span className="rounded-full border border-river-threads/40 bg-river-threads/15 px-2 py-0.5 text-[10px] text-river-threads">
+              <span className="rounded-full border border-river-threads/40 bg-river-threads/15 px-2 py-0.5 text-[0.625rem] text-river-threads">
                 合流 ×{groupSize}
               </span>
             )}
@@ -117,7 +117,7 @@ export function HeroSpotlight({
           <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-river-muted">
             {item.preview}
           </p>
-          <div className="mt-3 flex gap-3 text-[11px] text-river-muted">
+          <div className="mt-3 flex gap-3 text-[0.6875rem] text-river-muted">
             <span>{item.author}</span>
             {engBits.length > 0 && (
               <span className="ml-auto tabular-nums">{engBits.join(" · ")}</span>

@@ -42,7 +42,7 @@ export function HotTicker({
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-river-accent opacity-60" />
             <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-river-accent" />
           </span>
-          <span className="whitespace-nowrap text-[11px] font-bold tracking-wide text-river-accent">
+          <span className="whitespace-nowrap text-[0.6875rem] font-bold tracking-wide text-river-accent">
             熱訊
           </span>
         </div>
@@ -56,7 +56,7 @@ export function HotTicker({
                 className="group flex max-w-[280px] shrink-0 items-center gap-2 text-left transition hover:opacity-100"
               >
                 <span
-                  className={`shrink-0 rounded border px-1 py-px text-[9px] font-semibold ${
+                  className={`shrink-0 rounded border px-1 py-px text-[0.5625rem] font-semibold ${
                     item.source === "ptt"
                       ? "border-river-ptt/40 text-river-ptt"
                       : item.source === "threads"
@@ -66,7 +66,7 @@ export function HotTicker({
                 >
                   {SOURCE_LABEL[item.source] || item.source}
                 </span>
-                <span className="truncate text-[12px] text-river-muted group-hover:text-river-text">
+                <span className="truncate text-[0.75rem] text-river-muted group-hover:text-river-text">
                   {item.title}
                 </span>
               </button>

@@ -349,12 +349,12 @@ export function RiverFeed() {
       />
 
       {sourceErrors.length > 0 && !loading && (
-        <div className="rounded-md border border-river-warn/30 bg-river-warn/10 px-3 py-2 text-[11px] text-river-warn">
+        <div className="rounded-md border border-river-warn/30 bg-river-warn/10 px-3 py-2 text-[0.6875rem] text-river-warn">
           {sourceErrors.map((e) => e.message).join(" · ")}
         </div>
       )}
 
-      <div className="flex items-center justify-between text-[11px] text-river-muted">
+      <div className="flex items-center justify-between text-[0.6875rem] text-river-muted">
         <span>{countLabel}</span>
         <button
           type="button"
@@ -452,7 +452,7 @@ export function RiverFeed() {
 
       {/* Infinite-scroll sentinel */}
       {!loading && !error && items.length > 0 && (
-        <div ref={sentinelRef} className="py-4 text-center text-[11px] text-river-muted">
+        <div ref={sentinelRef} className="py-4 text-center text-[0.6875rem] text-river-muted">
           {loadingMore ? (
             <span className="inline-flex items-center gap-2">
               <span
@@ -470,7 +470,7 @@ export function RiverFeed() {
       )}
 
       {fetchedAt && !loading && (
-        <p className="text-center text-[10px] text-river-muted/70">
+        <p className="text-center text-[0.625rem] text-river-muted/70">
           更新於{" "}
           {new Intl.DateTimeFormat("zh-TW", {
             timeZone: "Asia/Taipei",

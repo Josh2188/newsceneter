@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Global text scale: 1.15× (Tailwind rem-based sizes follow html font-size) */
+html {
+  font-size: 115%;
+}
+
+
 :root {
   color-scheme: light dark;
 
@@ -177,11 +183,11 @@ body {
 }
 
 .prose-bbs {
-  @apply whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-river-text/90;
+  @apply whitespace-pre-wrap break-words font-mono text-[0.8125rem] leading-relaxed text-river-text/90;
 }
 
 .prose-article {
-  @apply break-words text-[15px] leading-relaxed text-river-text sm:text-base;
+  @apply break-words text-[0.9375rem] leading-relaxed text-river-text sm:text-base;
 }
 
 .prose-article p {
@@ -194,11 +200,11 @@ body {
 }
 
 .prose-article .note {
-  @apply mb-3 rounded-lg border border-river-border/70 bg-river-panel/50 px-3 py-2 text-[13px] leading-relaxed text-river-muted last:mb-0;
+  @apply mb-3 rounded-lg border border-river-border/70 bg-river-panel/50 px-3 py-2 text-[0.8125rem] leading-relaxed text-river-muted last:mb-0;
 }
 
 .prose-ptt {
-  @apply break-words text-[14px] leading-relaxed text-river-text/90;
+  @apply break-words text-[0.875rem] leading-relaxed text-river-text/90;
 }
 
 .prose-ptt p {
@@ -210,11 +216,11 @@ body {
 }
 
 .prose-ptt .quote {
-  @apply mb-3 whitespace-pre-wrap border-l-2 border-river-ptt/40 pl-3 text-[13px] leading-relaxed text-river-muted last:mb-0;
+  @apply mb-3 whitespace-pre-wrap border-l-2 border-river-ptt/40 pl-3 text-[0.8125rem] leading-relaxed text-river-muted last:mb-0;
 }
 
 .prose-ptt .note {
-  @apply mb-2 text-[12px] leading-relaxed text-river-muted/80 last:mb-0;
+  @apply mb-2 text-[0.75rem] leading-relaxed text-river-muted/80 last:mb-0;
 }
 
 .prose-ptt hr {

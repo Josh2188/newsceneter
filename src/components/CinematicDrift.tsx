@@ -160,10 +160,10 @@ export function CinematicDrift({
 
       <div className="relative z-10 flex items-center justify-between gap-3 px-4 pt-4 sm:px-6">
         <div className="flex items-center gap-2">
-          <span className="rounded-full border border-river-accent/40 bg-river-bg/50 px-2.5 py-1 text-[11px] font-semibold text-river-accent backdrop-blur">
+          <span className="rounded-full border border-river-accent/40 bg-river-bg/50 px-2.5 py-1 text-[0.6875rem] font-semibold text-river-accent backdrop-blur">
             夜間漂流
           </span>
-          <span className="tabular-nums text-[11px] text-river-text/60">
+          <span className="tabular-nums text-[0.6875rem] text-river-text/60">
             {index + 1} / {n}
           </span>
         </div>
@@ -202,7 +202,7 @@ export function CinematicDrift({
           <p className="mt-3 line-clamp-3 max-w-2xl text-sm leading-relaxed text-white/75 drop-shadow sm:text-base">
             {item.preview}
           </p>
-          <p className="mt-3 text-[11px] text-river-accent drop-shadow">
+          <p className="mt-3 text-[0.6875rem] text-river-accent drop-shadow">
             點擊查看全文 →
           </p>
         </button>
@@ -232,7 +232,7 @@ export function CinematicDrift({
           >
             下一則 →
           </button>
-          <span className="ml-auto hidden text-[10px] text-white/50 sm:inline">
+          <span className="ml-auto hidden text-[0.625rem] text-white/50 sm:inline">
             空白鍵暫停 · 左右鍵切換 · 滑動亦可
           </span>
         </div>

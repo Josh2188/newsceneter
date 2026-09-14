@@ -69,7 +69,7 @@ export function FeedCard({
           <SourceBadge source={item.source} />
           <span className="truncate">{item.channel}</span>
           {isRead && (
-            <span className="shrink-0 rounded border border-river-border/80 px-1 py-px text-[9px] text-river-muted">
+            <span className="shrink-0 rounded border border-river-border/80 px-1 py-px text-[0.5625rem] text-river-muted">
               已讀
             </span>
           )}
@@ -81,14 +81,14 @@ export function FeedCard({
           <div className="min-w-0 flex-1">
             <h2
               className={`mb-1.5 font-semibold leading-snug text-river-text ${
-                featured ? "text-lg sm:text-xl" : "text-[15px]"
+                featured ? "text-lg sm:text-xl" : "text-[0.9375rem]"
               }`}
             >
               {item.title}
             </h2>
             <p
               className={`leading-relaxed text-river-muted ${
-                featured ? "line-clamp-3 text-[14px]" : "line-clamp-2 text-sm"
+                featured ? "line-clamp-3 text-[0.875rem]" : "line-clamp-2 text-sm"
               }`}
             >
               {item.preview}
@@ -107,7 +107,7 @@ export function FeedCard({
             />
           )}
         </div>
-        <div className="mt-2.5 flex items-center gap-3 text-[11px] text-river-muted">
+        <div className="mt-2.5 flex items-center gap-3 text-[0.6875rem] text-river-muted">
           <span>{item.author}</span>
           {engBits.length > 0 && (
             <span className="ml-auto tabular-nums">{engBits.join(" · ")}</span>
@@ -123,7 +123,7 @@ export function FeedCard({
               e.preventDefault();
               setOpen((v) => !v);
             }}
-            className="inline-flex items-center gap-1 rounded-full border border-river-threads/40 bg-river-threads/10 px-2 py-0.5 text-[10px] font-medium text-river-threads transition hover:bg-river-threads/20"
+            className="inline-flex items-center gap-1 rounded-full border border-river-threads/40 bg-river-threads/10 px-2 py-0.5 text-[0.625rem] font-medium text-river-threads transition hover:bg-river-threads/20"
           >
             合流 ×{groupSize}
             <span className="opacity-70">{open ? "▴" : "▾"}</span>
@@ -140,7 +140,7 @@ export function FeedCard({
                       onOpen?.(sib.id);
                     }}
                     onMouseEnter={() => prefetchPostApi(sib)}
-                    className="flex items-start gap-2 rounded-md border border-river-border/50 bg-river-bg/40 px-2 py-1.5 text-[11px] hover:border-river-accent/30"
+                    className="flex items-start gap-2 rounded-md border border-river-border/50 bg-river-bg/40 px-2 py-1.5 text-[0.6875rem] hover:border-river-accent/30"
                   >
                     <SourceBadge source={sib.source} />
                     <span className="min-w-0 flex-1 leading-snug text-river-muted line-clamp-2 hover:text-river-text">
@@ -200,12 +200,12 @@ export function ImageWallCard({
         <div className="mb-1 flex items-center gap-1.5">
           <SourceBadge source={item.source} />
           {isRead && (
-            <span className="rounded border border-white/20 px-1 py-px text-[9px] text-white/70">
+            <span className="rounded border border-white/20 px-1 py-px text-[0.5625rem] text-white/70">
               已讀
             </span>
           )}
         </div>
-        <h2 className="line-clamp-2 text-[12px] font-semibold leading-snug text-white">
+        <h2 className="line-clamp-2 text-[0.75rem] font-semibold leading-snug text-white">
           {item.title}
         </h2>
       </div>

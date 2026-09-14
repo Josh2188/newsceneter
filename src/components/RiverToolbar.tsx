@@ -84,7 +84,7 @@ export function RiverToolbar({
         <button
           type="button"
           onClick={() => onImageWallChange(false)}
-          className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
+          className={`rounded-full px-2.5 py-1 text-[0.6875rem] font-medium transition ${
             !imageWall
               ? "bg-river-accent/20 text-river-accent"
               : "text-river-muted hover:text-river-text"
@@ -95,7 +95,7 @@ export function RiverToolbar({
         <button
           type="button"
           onClick={() => onImageWallChange(true)}
-          className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
+          className={`rounded-full px-2.5 py-1 text-[0.6875rem] font-medium transition ${
             imageWall
               ? "bg-river-accent/20 text-river-accent"
               : "text-river-muted hover:text-river-text"
@@ -109,7 +109,7 @@ export function RiverToolbar({
       <button
         type="button"
         onClick={() => setHintOpen((v) => !v)}
-        className="flex h-7 w-7 items-center justify-center rounded-full border border-river-border text-[11px] text-river-muted hover:border-river-accent hover:text-river-accent"
+        className="flex h-7 w-7 items-center justify-center rounded-full border border-river-border text-[0.6875rem] text-river-muted hover:border-river-accent hover:text-river-accent"
         aria-label="快捷鍵說明"
         title="快捷鍵"
       >
@@ -117,7 +117,7 @@ export function RiverToolbar({
       </button>
 
       {hintOpen && (
-        <div className="glass-panel absolute right-0 top-full z-20 mt-1 w-56 rounded-lg px-3 py-2 text-[11px] text-river-muted shadow-lg">
+        <div className="glass-panel absolute right-0 top-full z-20 mt-1 w-56 rounded-lg px-3 py-2 text-[0.6875rem] text-river-muted shadow-lg">
           <p className="mb-1 text-river-muted/80">河道依新到舊排列，來源穿插混入</p>
           <p>
             <kbd className="rounded bg-river-border/80 px-1 font-mono text-river-text">
