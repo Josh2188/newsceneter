@@ -1,14 +1,24 @@
-import { SOURCE_BADGE_CLASS, SOURCE_LABEL } from "@/lib/format";
+import { SOURCE_DOT_CLASS, SOURCE_LABEL } from "@/lib/format";
 
-export function SourceBadge({ source }: { source: string }) {
-  const cls =
-    SOURCE_BADGE_CLASS[source] ||
-    "bg-white/10 text-river-muted border-white/10";
+/** Quiet source marker: a small colored dot + label. */
+export function SourceBadge({
+  source,
+  tone = "default",
+  showLabel = true,
+}: {
+  source: string;
+  tone?: "default" | "onImage";
+  showLabel?: boolean;
+}) {
+  const dot = SOURCE_DOT_CLASS[source] || "bg-river-muted";
   return (
     <span
-      className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[0.625rem] font-semibold tracking-wide ${cls}`}
+      className={`inline-flex shrink-0 items-center gap-1.5 text-[0.75rem] font-medium ${
+        tone === "onImage" ? "text-white/85" : "text-river-text/80"
+      }`}
     >
-      {SOURCE_LABEL[source] || source}
+      <span className={`h-1.5 w-1.5 rounded-full ${dot}`} aria-hidden />
+      {showLabel && (SOURCE_LABEL[source] || source)}
     </span>
   );
 }

@@ -9,11 +9,45 @@ import { formatTime } from "@/lib/format";
 import { prefetchPostApi, stashPendingPost } from "@/lib/pendingPost";
 import { SourceBadge } from "./SourceBadge";
 
-const GLOW: Record<string, string> = {
-  ptt: "source-glow-ptt",
-  threads: "source-glow-threads",
-  news: "source-glow-news",
-};
+export function engagementBits(item: FeedItem): string[] {
+  const eng = item.engagement;
+  const bits: string[] = [];
+  if (eng?.pushes) bits.push(`推 ${eng.pushes}`);
+  if (eng?.boos) bits.push(`噓 ${eng.boos}`);
+  if (eng?.likes) bits.push(`♥ ${eng.likes}`);
+  if (eng?.comments && !eng.pushes) bits.push(`留言 ${eng.comments}`);
+  return bits;
+}
+
+export function MetaLine({
+  item,
+  isRead,
+  tone = "default",
+}: {
+  item: FeedItem;
+  isRead?: boolean;
+  tone?: "default" | "onImage";
+}) {
+  const muted = tone === "onImage" ? "text-white/70" : "text-river-muted";
+  return (
+    <div className={`flex min-w-0 items-center gap-1.5 text-[0.75rem] ${muted}`}>
+      <SourceBadge source={item.source} tone={tone} />
+      {item.channel && (
+        <>
+          <span aria-hidden>·</span>
+          <span className="truncate">{item.channel}</span>
+        </>
+      )}
+      {item.createdAt && (
+        <>
+          <span aria-hidden>·</span>
+          <span className="shrink-0 tabular-nums">{formatTime(item.createdAt)}</span>
+        </>
+      )}
+      {isRead && <span className="ml-1 shrink-0">已讀</span>}
+    </div>
+  );
+}
 
 export function FeedCard({
   item,
@@ -33,24 +67,16 @@ export function FeedCard({
   index?: number;
 }) {
   const [open, setOpen] = useState(false);
-  const eng = item.engagement;
-  const engBits: string[] = [];
-  if (eng?.pushes) engBits.push(`推 ${eng.pushes}`);
-  if (eng?.boos) engBits.push(`噓 ${eng.boos}`);
-  if (eng?.likes) engBits.push(`♥ ${eng.likes}`);
-  if (eng?.comments && !eng.pushes) engBits.push(`留言 ${eng.comments}`);
-
+  const engBits = engagementBits(item);
   const thumb = item.images?.[0];
   const groupSize = confluence?.memberIds.length ?? 0;
   const others = siblings?.filter((s) => s.id !== item.id) || [];
-  const delay = Math.min(index, 12) * 45;
+  const delay = Math.min(index, 10) * 20;
 
   return (
     <div
-      className={`glass-panel card-lift fade-rise overflow-hidden rounded-xl ${
-        GLOW[item.source] || ""
-      } ${isRead ? "opacity-[0.55]" : ""} ${
-        featured ? "ring-1 ring-river-accent/25 shadow-glow" : ""
+      className={`fade-rise border-b border-river-border/70 py-1 transition-opacity ${
+        isRead ? "opacity-[0.55]" : ""
       }`}
       style={{ animationDelay: `${delay}ms` }}
     >
@@ -63,73 +89,58 @@ export function FeedCard({
         }}
         onMouseEnter={() => prefetchPostApi(item)}
         onFocus={() => prefetchPostApi(item)}
-        className={`block ${featured ? "p-4 sm:p-5" : "p-3.5"}`}
+        className="-mx-3 flex gap-4 rounded-lg px-3 py-3 transition-colors hover:bg-river-text/[0.035]"
       >
-        <div className="mb-2 flex items-center gap-2 text-xs text-river-muted">
-          <SourceBadge source={item.source} />
-          <span className="truncate">{item.channel}</span>
-          {isRead && (
-            <span className="shrink-0 rounded border border-river-border/80 px-1 py-px text-[0.5625rem] text-river-muted">
-              已讀
-            </span>
-          )}
-          <span className="ml-auto shrink-0 tabular-nums">
-            {formatTime(item.createdAt)}
-          </span>
-        </div>
-        <div className={thumb ? "flex gap-3" : undefined}>
-          <div className="min-w-0 flex-1">
-            <h2
-              className={`mb-1.5 font-semibold leading-snug text-river-text ${
-                featured ? "text-lg sm:text-xl" : "text-[0.9375rem]"
-              }`}
-            >
-              {item.title}
-            </h2>
-            <p
-              className={`leading-relaxed text-river-muted ${
-                featured ? "line-clamp-3 text-[0.875rem]" : "line-clamp-2 text-sm"
-              }`}
-            >
+        <div className="min-w-0 flex-1">
+          <MetaLine item={item} isRead={isRead} />
+          <h2
+            className={`mt-1.5 font-semibold leading-snug tracking-[-0.005em] ${
+              isRead ? "text-river-muted" : "text-river-text"
+            } ${featured ? "text-[1.25rem]" : "text-[1rem]"}`}
+          >
+            {item.title}
+          </h2>
+          {item.preview && (
+            <p className="mt-1 line-clamp-2 text-[0.875rem] leading-relaxed text-river-muted">
               {item.preview}
             </p>
-          </div>
-          {thumb && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={thumb}
-              alt=""
-              loading="lazy"
-              referrerPolicy="no-referrer"
-              className={`shrink-0 rounded-lg border border-river-border/60 object-cover shadow-md ${
-                featured ? "h-24 w-24 sm:h-28 sm:w-28" : "h-16 w-16"
-              }`}
-            />
+          )}
+          {(item.author || engBits.length > 0) && (
+            <div className="mt-2 flex items-center gap-2 text-[0.75rem] tabular-nums text-river-muted/90">
+              {item.author && <span className="truncate">{item.author}</span>}
+              {item.author && engBits.length > 0 && <span aria-hidden>·</span>}
+              {engBits.length > 0 && <span className="shrink-0">{engBits.join("　")}</span>}
+            </div>
           )}
         </div>
-        <div className="mt-2.5 flex items-center gap-3 text-[0.6875rem] text-river-muted">
-          <span>{item.author}</span>
-          {engBits.length > 0 && (
-            <span className="ml-auto tabular-nums">{engBits.join(" · ")}</span>
-          )}
-        </div>
+        {thumb && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={thumb}
+            alt=""
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            className="mt-1 h-[4.5rem] w-[4.5rem] shrink-0 rounded-lg bg-river-raised object-cover sm:h-20 sm:w-28"
+          />
+        )}
       </Link>
 
       {groupSize >= 2 && (
-        <div className="border-t border-river-border/40 px-3.5 py-2">
+        <div className="pb-2">
           <button
             type="button"
             onClick={(e) => {
               e.preventDefault();
               setOpen((v) => !v);
             }}
-            className="inline-flex items-center gap-1 rounded-full border border-river-threads/40 bg-river-threads/10 px-2 py-0.5 text-[0.625rem] font-medium text-river-threads transition hover:bg-river-threads/20"
+            aria-expanded={open}
+            className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 -ml-1.5 text-[0.75rem] font-medium text-river-accent transition-colors hover:bg-river-accent/10"
           >
             合流 ×{groupSize}
-            <span className="opacity-70">{open ? "▴" : "▾"}</span>
+            <span className="text-[0.625rem] opacity-70">{open ? "▲" : "▼"}</span>
           </button>
           {open && others.length > 0 && (
-            <ul className="mt-2 space-y-1.5">
+            <ul className="mt-1.5 space-y-0.5 border-l border-river-border pl-3">
               {others.map((sib) => (
                 <li key={sib.id}>
                   <Link
@@ -140,10 +151,10 @@ export function FeedCard({
                       onOpen?.(sib.id);
                     }}
                     onMouseEnter={() => prefetchPostApi(sib)}
-                    className="flex items-start gap-2 rounded-md border border-river-border/50 bg-river-bg/40 px-2 py-1.5 text-[0.6875rem] hover:border-river-accent/30"
+                    className="flex items-start gap-2 rounded-md px-2 py-1.5 text-[0.8125rem] transition-colors hover:bg-river-text/[0.035]"
                   >
                     <SourceBadge source={sib.source} />
-                    <span className="min-w-0 flex-1 leading-snug text-river-muted line-clamp-2 hover:text-river-text">
+                    <span className="min-w-0 flex-1 leading-snug text-river-muted line-clamp-2">
                       {sib.title}
                     </span>
                   </Link>
@@ -171,7 +182,7 @@ export function ImageWallCard({
 }) {
   const thumb = item.images?.[0];
   if (!thumb) return null;
-  const delay = Math.min(index, 12) * 40;
+  const delay = Math.min(index, 10) * 20;
 
   return (
     <Link
@@ -183,29 +194,25 @@ export function ImageWallCard({
       }}
       onMouseEnter={() => prefetchPostApi(item)}
       onFocus={() => prefetchPostApi(item)}
-      className={`group relative block overflow-hidden rounded-xl border border-river-border/50 bg-river-panel card-lift fade-rise ${
-        GLOW[item.source] || ""
-      } ${isRead ? "opacity-[0.55]" : ""}`}
+      className={`fade-rise group block ${isRead ? "opacity-[0.55]" : ""}`}
       style={{ animationDelay: `${delay}ms` }}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={thumb}
-        alt=""
-        loading="lazy"
-        referrerPolicy="no-referrer"
-        className="aspect-[4/5] w-full object-cover transition duration-300 group-hover:scale-[1.03]"
-      />
-      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/50 to-transparent p-2.5 pt-8">
-        <div className="mb-1 flex items-center gap-1.5">
+      <div className="overflow-hidden rounded-lg bg-river-raised">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={thumb}
+          alt=""
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          className="aspect-[4/5] w-full object-cover transition-opacity group-hover:opacity-90"
+        />
+      </div>
+      <div className="mt-2 px-0.5">
+        <div className="flex items-center gap-1.5 text-[0.6875rem] text-river-muted">
           <SourceBadge source={item.source} />
-          {isRead && (
-            <span className="rounded border border-white/20 px-1 py-px text-[0.5625rem] text-white/70">
-              已讀
-            </span>
-          )}
+          {isRead && <span>已讀</span>}
         </div>
-        <h2 className="line-clamp-2 text-[0.75rem] font-semibold leading-snug text-white">
+        <h2 className="mt-1 line-clamp-2 text-[0.8125rem] font-medium leading-snug text-river-text group-hover:underline group-hover:underline-offset-2">
           {item.title}
         </h2>
       </div>

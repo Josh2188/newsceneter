@@ -2,48 +2,30 @@
 
 import type { ThermometerStats } from "@/lib/thermometer";
 
-const LABEL_EMOJI: Record<string, string> = {
-  冰涼: "🧊",
-  微溫: "🌤",
-  滾燙: "🔥",
-  沸騰: "🌋",
-};
-
+/** Compact inline river-temperature meter. */
 export function RiverThermometer({ stats }: { stats: ThermometerStats }) {
-  const emoji = LABEL_EMOJI[stats.label] || "";
   return (
-    <div className="glass-panel rounded-xl px-3 py-2.5">
-      <div className="mb-1.5 flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold text-river-text">
-          河道溫度計{" "}
-          <span className="text-river-accent">
-            {emoji} {stats.label}
-          </span>
-        </span>
-        <span className="tabular-nums text-[0.625rem] text-river-muted">
-          {stats.score}°
-        </span>
-      </div>
-      <div
-        className="mb-1.5 h-1.5 overflow-hidden rounded-full bg-river-border/80"
+    <span
+      className="inline-flex shrink-0 items-center gap-2"
+      title={`河道溫度 · ${stats.breakdown}`}
+    >
+      <span>
+        溫度 <span className="text-river-text">{stats.label}</span>
+      </span>
+      <span
+        className="h-1 w-12 overflow-hidden rounded-full bg-river-border"
         role="meter"
         aria-valuenow={stats.score}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-label={`河道溫度 ${stats.label}`}
       >
-        <div
-          className="h-full rounded-full transition-all duration-500"
-          style={{
-            width: `${stats.score}%`,
-            background:
-              "linear-gradient(90deg, rgb(var(--river-accent)) 0%, rgb(var(--river-warn)) 55%, #f87171 100%)",
-          }}
+        <span
+          className="block h-full rounded-full bg-river-accent"
+          style={{ width: `${stats.score}%` }}
         />
-      </div>
-      <p className="truncate text-[0.625rem] leading-relaxed text-river-muted">
-        {stats.breakdown}
-      </p>
-    </div>
+      </span>
+      <span className="tabular-nums">{stats.score}°</span>
+    </span>
   );
 }

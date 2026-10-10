@@ -66,19 +66,14 @@ export function NowRiver({
   const line = lines[lineIdx % lines.length] || "";
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-river-accent/15 bg-river-accent/[0.04] px-3 py-2 text-[0.6875rem]">
-      <span className="inline-flex items-center gap-1.5 font-mono tabular-nums text-river-accent">
-        <span className="h-1.5 w-1.5 rounded-full bg-river-accent animate-pulse-glow" />
-        此刻這河 · {clock}
+    <span className="flex min-w-0 items-center gap-2">
+      <span className="shrink-0 tabular-nums">{clock}</span>
+      <span className="text-river-border" aria-hidden>
+        ·
       </span>
-      <span className="hidden text-river-border sm:inline">│</span>
-      <span
-        key={line}
-        className="min-w-0 flex-1 truncate text-river-muted fade-rise"
-        title={line}
-      >
+      <span key={line} className="fade-rise min-w-0 truncate" title={line}>
         {line}
       </span>
-    </div>
+    </span>
   );
 }

@@ -312,77 +312,85 @@ export function RiverFeed() {
       : `已載入 ${filtered.length} 則${
           unreadOnly || imageWall ? `（篩自 ${items.length}）` : ""
         }${
-          total != null && !unreadOnly && !imageWall
-            ? ` / 池 ${total}`
-            : ""
-        } · 新到舊 · 來源穿插`;
+          total != null && !unreadOnly && !imageWall ? ` · 池 ${total}` : ""
+        }`;
+
+  const ready = !loading && !error;
 
   return (
-    <div className="space-y-4">
-      {!loading && !error && items.length > 0 && (
-        <NowRiver
-          stats={thermo}
-          topItem={tickerItems[0] || firstPageItems[0] || items[0]}
-        />
+    <div>
+      {/* Sticky controls: source tabs + compact toolbar */}
+      <div className="sticky top-12 z-20 -mx-4 mb-4 border-b border-river-border bg-river-bg/95 px-4 backdrop-blur-sm sm:-mx-6 sm:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-x-4">
+          <FilterChips value={filter} onChange={setFilter} />
+          <div className="py-1.5">
+            <RiverToolbar
+              onRandomDive={handleRandomDive}
+              unreadOnly={unreadOnly}
+              onUnreadOnlyChange={setUnreadOnly}
+              onClearRead={handleClearRead}
+              imageWall={imageWall}
+              onImageWallChange={setImageWall}
+              diving={diving}
+              cinematic={driftOpen}
+              onCinematicChange={(v) => (v ? openDrift() : closeDrift())}
+              onRefresh={() => loadInitial(filter, true)}
+              refreshing={loading}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Quiet status line: clock + river note, temperature */}
+      {ready && items.length > 0 && (
+        <div className="mb-3 flex items-center justify-between gap-4 text-[0.75rem] text-river-muted">
+          <NowRiver
+            stats={thermo}
+            topItem={tickerItems[0] || firstPageItems[0] || items[0]}
+          />
+          <span className="hidden sm:inline-flex">
+            <RiverThermometer stats={thermo} />
+          </span>
+        </div>
       )}
 
-      <FilterChips value={filter} onChange={setFilter} />
-
-      {!loading && !error && tickerItems.length > 0 && (
-        <HotTicker items={tickerItems} onOpen={handleOpen} />
+      {ready && tickerItems.length > 0 && !imageWall && (
+        <div className="mb-6">
+          <HotTicker items={tickerItems} onOpen={handleOpen} />
+        </div>
       )}
-
-      {!loading && !error && items.length > 0 && (
-        <RiverThermometer stats={thermo} />
-      )}
-
-      <RiverToolbar
-        onRandomDive={handleRandomDive}
-        unreadOnly={unreadOnly}
-        onUnreadOnlyChange={setUnreadOnly}
-        onClearRead={handleClearRead}
-        imageWall={imageWall}
-        onImageWallChange={setImageWall}
-        diving={diving}
-        cinematic={driftOpen}
-        onCinematicChange={(v) => (v ? openDrift() : closeDrift())}
-      />
 
       {sourceErrors.length > 0 && !loading && (
-        <div className="rounded-md border border-river-warn/30 bg-river-warn/10 px-3 py-2 text-[0.6875rem] text-river-warn">
+        <div className="mb-4 rounded-lg bg-river-warn/10 px-3 py-2 text-[0.75rem] text-river-warn">
           {sourceErrors.map((e) => e.message).join(" · ")}
         </div>
       )}
 
-      <div className="flex items-center justify-between text-[0.6875rem] text-river-muted">
-        <span>{countLabel}</span>
-        <button
-          type="button"
-          onClick={() => loadInitial(filter, true)}
-          className="rounded border border-river-border px-2 py-1 hover:border-river-accent hover:text-river-accent"
-          disabled={loading}
-        >
-          重新整理
-        </button>
-      </div>
-
       {loading && (
-        <div className="space-y-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div
-              key={i}
-              className="h-28 animate-pulse rounded-xl border border-river-border bg-river-panel/50"
-            />
+        <div className="space-y-6 pt-2" aria-busy="true" aria-label="載入中">
+          <div className="space-y-3">
+            <div className="aspect-[2/1] w-full animate-pulse rounded-xl bg-river-raised" />
+            <div className="h-6 w-3/4 animate-pulse rounded bg-river-raised" />
+          </div>
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="flex gap-4 border-b border-river-border/70 pb-5">
+              <div className="flex-1 space-y-2">
+                <div className="h-3 w-32 animate-pulse rounded bg-river-raised" />
+                <div className="h-4 w-11/12 animate-pulse rounded bg-river-raised" />
+                <div className="h-3 w-2/3 animate-pulse rounded bg-river-raised" />
+              </div>
+              <div className="h-[4.5rem] w-[4.5rem] animate-pulse rounded-lg bg-river-raised sm:w-28" />
+            </div>
           ))}
         </div>
       )}
 
       {!loading && error && (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-600">
+        <div className="rounded-lg border border-river-border bg-river-panel p-4 text-sm text-river-text">
           {error}
           <button
             type="button"
-            className="ml-3 underline"
+            className="ml-3 text-river-accent underline underline-offset-2"
             onClick={() => loadInitial(filter, true)}
           >
             重試
@@ -390,17 +398,17 @@ export function RiverFeed() {
         </div>
       )}
 
-      {!loading && !error && filtered.length === 0 && (
-        <div className="rounded-lg border border-dashed border-river-border p-8 text-center text-sm text-river-muted">
+      {ready && filtered.length === 0 && (
+        <div className="py-16 text-center text-sm text-river-muted">
           {imageWall
-            ? "圖牆空空——這批河道沒有帶圖的帖，切回列表再逛逛。"
+            ? "這批河道沒有帶圖的貼文，切回列表再逛逛。"
             : unreadOnly
-              ? "已讀完啦，關閉「僅未讀」或清除已讀再來。"
+              ? "都讀完了。關閉「僅顯示未讀」或清除已讀再來。"
               : "河道目前沒有內容。試試其他來源，或稍後再整理。"}
         </div>
       )}
 
-      {!loading && !error && hero && !imageWall && (
+      {ready && hero && !imageWall && (
         <HeroSpotlight
           item={hero}
           confluence={confluenceMap.get(hero.id) || null}
@@ -409,8 +417,8 @@ export function RiverFeed() {
         />
       )}
 
-      {!loading && !error && listItems.length > 0 && !imageWall && (
-        <ul className="space-y-3">
+      {ready && listItems.length > 0 && !imageWall && (
+        <ul className="mt-2">
           {listItems.map((item, idx) => {
             const group = confluenceMap.get(item.id) || null;
             const siblings = group
@@ -435,52 +443,76 @@ export function RiverFeed() {
         </ul>
       )}
 
-      {!loading && !error && filtered.length > 0 && imageWall && (
-        <div className="columns-2 gap-3 sm:columns-3">
+      {ready && filtered.length > 0 && imageWall && (
+        <div className="grid grid-cols-2 gap-x-3 gap-y-5 sm:grid-cols-3">
           {filtered.map((item, idx) => (
-            <div key={item.id} className="mb-3 break-inside-avoid">
-              <ImageWallCard
-                item={item}
-                isRead={readIds.has(item.id)}
-                onOpen={handleOpen}
-                index={idx}
-              />
-            </div>
+            <ImageWallCard
+              key={item.id}
+              item={item}
+              isRead={readIds.has(item.id)}
+              onOpen={handleOpen}
+              index={idx}
+            />
           ))}
         </div>
       )}
 
       {/* Infinite-scroll sentinel */}
-      {!loading && !error && items.length > 0 && (
-        <div ref={sentinelRef} className="py-4 text-center text-[0.6875rem] text-river-muted">
+      {ready && items.length > 0 && (
+        <div
+          ref={sentinelRef}
+          className="py-6 text-center text-[0.75rem] text-river-muted"
+        >
           {loadingMore ? (
             <span className="inline-flex items-center gap-2">
               <span
-                className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-river-border border-t-river-accent"
+                className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-river-border border-t-river-muted"
                 aria-hidden
               />
               載入更多…
             </span>
           ) : hasMore ? (
-            <span className="opacity-60">繼續往下滾動載入更多</span>
+            <span className="opacity-70">往下捲動載入更多</span>
           ) : (
             <span>已經到底了</span>
           )}
         </div>
       )}
 
-      {fetchedAt && !loading && (
-        <p className="text-center text-[0.625rem] text-river-muted/70">
-          更新於{" "}
-          {new Intl.DateTimeFormat("zh-TW", {
-            timeZone: "Asia/Taipei",
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-            hour12: false,
-          }).format(new Date(fetchedAt))}{" "}
-          （台北時間）
-        </p>
+      {!loading && (
+        <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-[0.75rem] text-river-muted">
+          <span className="tabular-nums">{countLabel}</span>
+          {fetchedAt && (
+            <>
+              <span aria-hidden>·</span>
+              <span className="tabular-nums">
+                更新於{" "}
+                {new Intl.DateTimeFormat("zh-TW", {
+                  timeZone: "Asia/Taipei",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  hour12: false,
+                }).format(new Date(fetchedAt))}{" "}
+                台北
+              </span>
+            </>
+          )}
+          {ready && items.length > 0 && (
+            <span className="inline-flex sm:hidden">
+              <span aria-hidden className="mr-2">·</span>
+              <RiverThermometer stats={thermo} />
+            </span>
+          )}
+          <span aria-hidden>·</span>
+          <button
+            type="button"
+            onClick={() => loadInitial(filter, true)}
+            className="text-river-accent hover:underline hover:underline-offset-2"
+            disabled={loading}
+          >
+            重新整理
+          </button>
+        </div>
       )}
 
       {driftOpen && (

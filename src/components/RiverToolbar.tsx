@@ -1,6 +1,38 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+function MenuItem({
+  onClick,
+  children,
+  hint,
+  checked,
+}: {
+  onClick: () => void;
+  children: React.ReactNode;
+  hint?: string;
+  checked?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role={checked === undefined ? "menuitem" : "menuitemcheckbox"}
+      aria-checked={checked}
+      onClick={onClick}
+      className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[0.8125rem] text-river-text transition-colors hover:bg-river-raised"
+    >
+      <span className="w-3.5 text-river-accent" aria-hidden>
+        {checked ? "✓" : ""}
+      </span>
+      <span className="flex-1">{children}</span>
+      {hint && (
+        <kbd className="rounded border border-river-border px-1.5 text-[0.6875rem] font-sans text-river-muted">
+          {hint}
+        </kbd>
+      )}
+    </button>
+  );
+}
 
 export function RiverToolbar({
   onRandomDive,
@@ -12,6 +44,8 @@ export function RiverToolbar({
   diving,
   cinematic,
   onCinematicChange,
+  onRefresh,
+  refreshing,
 }: {
   onRandomDive: () => void;
   unreadOnly: boolean;
@@ -22,84 +56,68 @@ export function RiverToolbar({
   diving?: boolean;
   cinematic?: boolean;
   onCinematicChange?: (v: boolean) => void;
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }) {
-  const [hintOpen, setHintOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (!hintOpen) return;
-    const t = setTimeout(() => setHintOpen(false), 5000);
-    return () => clearTimeout(t);
-  }, [hintOpen]);
+    if (!menuOpen) return;
+    function onDown(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
+
+  const seg = (active: boolean) =>
+    `rounded-[5px] px-2.5 py-1 text-[0.75rem] font-medium transition-colors ${
+      active
+        ? "bg-river-panel text-river-text shadow-[var(--shadow-sm)]"
+        : "text-river-muted hover:text-river-text"
+    }`;
 
   return (
-    <div className="relative flex flex-wrap items-center gap-2">
+    <div ref={wrapRef} className="relative flex items-center gap-1.5">
       <button
         type="button"
         onClick={onRandomDive}
-        className={`rounded-full border border-river-accent/40 bg-river-accent/10 px-3 py-1.5 text-xs font-medium text-river-accent transition hover:bg-river-accent/20 ${
-          diving ? "animate-pulse scale-105" : ""
+        className={`rounded-md px-2.5 py-1.5 text-[0.8125rem] font-medium text-river-text transition-colors hover:bg-river-raised ${
+          diving ? "opacity-60" : ""
         }`}
         title="隨機潛入一則（快捷鍵 r）"
       >
         隨緣一潛
       </button>
 
-      {onCinematicChange && (
+      <div
+        className="flex items-center rounded-md bg-river-raised p-0.5"
+        role="group"
+        aria-label="檢視模式"
+      >
         <button
           type="button"
-          onClick={() => onCinematicChange(!cinematic)}
-          className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-            cinematic
-              ? "border-river-threads bg-river-threads/15 text-river-threads"
-              : "border-river-border bg-river-panel/80 text-river-muted hover:border-river-threads/50 hover:text-river-threads"
-          }`}
-          title="夜間漂流全螢幕模式（快捷鍵 d）"
-        >
-          夜間漂流
-        </button>
-      )}
-
-      <button
-        type="button"
-        onClick={() => onUnreadOnlyChange(!unreadOnly)}
-        className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-          unreadOnly
-            ? "border-river-warn bg-river-warn/15 text-river-warn"
-            : "border-river-border bg-river-panel/80 text-river-muted hover:border-river-muted hover:text-river-text"
-        }`}
-      >
-        僅未讀
-      </button>
-
-      <button
-        type="button"
-        onClick={onClearRead}
-        className="rounded-full border border-river-border bg-river-panel/80 px-3 py-1.5 text-xs text-river-muted transition hover:border-river-muted hover:text-river-text"
-        title="清除已讀紀錄"
-      >
-        清除已讀
-      </button>
-
-      <div className="ml-auto flex items-center gap-1 rounded-full border border-river-border bg-river-panel/60 p-0.5">
-        <button
-          type="button"
+          aria-pressed={!imageWall}
           onClick={() => onImageWallChange(false)}
-          className={`rounded-full px-2.5 py-1 text-[0.6875rem] font-medium transition ${
-            !imageWall
-              ? "bg-river-accent/20 text-river-accent"
-              : "text-river-muted hover:text-river-text"
-          }`}
+          className={seg(!imageWall)}
         >
           列表
         </button>
         <button
           type="button"
+          aria-pressed={imageWall}
           onClick={() => onImageWallChange(true)}
-          className={`rounded-full px-2.5 py-1 text-[0.6875rem] font-medium transition ${
-            imageWall
-              ? "bg-river-accent/20 text-river-accent"
-              : "text-river-muted hover:text-river-text"
-          }`}
+          className={seg(imageWall)}
           title="圖牆模式（快捷鍵 g）"
         >
           圖牆
@@ -108,34 +126,68 @@ export function RiverToolbar({
 
       <button
         type="button"
-        onClick={() => setHintOpen((v) => !v)}
-        className="flex h-7 w-7 items-center justify-center rounded-full border border-river-border text-[0.6875rem] text-river-muted hover:border-river-accent hover:text-river-accent"
-        aria-label="快捷鍵說明"
-        title="快捷鍵"
+        onClick={() => setMenuOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        aria-label="更多選項"
+        title="更多"
+        className="relative flex h-8 w-8 items-center justify-center rounded-md text-river-muted transition-colors hover:bg-river-raised hover:text-river-text"
       >
-        ?
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden fill="currentColor">
+          <circle cx="3" cy="8" r="1.4" />
+          <circle cx="8" cy="8" r="1.4" />
+          <circle cx="13" cy="8" r="1.4" />
+        </svg>
+        {unreadOnly && (
+          <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-river-accent" />
+        )}
       </button>
 
-      {hintOpen && (
-        <div className="glass-panel absolute right-0 top-full z-20 mt-1 w-56 rounded-lg px-3 py-2 text-[0.6875rem] text-river-muted shadow-lg">
-          <p className="mb-1 text-river-muted/80">河道依新到舊排列，來源穿插混入</p>
-          <p>
-            <kbd className="rounded bg-river-border/80 px-1 font-mono text-river-text">
-              r
-            </kbd>{" "}
-            隨緣一潛
-          </p>
-          <p className="mt-1">
-            <kbd className="rounded bg-river-border/80 px-1 font-mono text-river-text">
-              g
-            </kbd>{" "}
-            切換圖牆
-          </p>
-          <p className="mt-1">
-            <kbd className="rounded bg-river-border/80 px-1 font-mono text-river-text">
-              d
-            </kbd>{" "}
-            夜間漂流
+      {menuOpen && (
+        <div
+          role="menu"
+          className="surface fade-rise absolute right-0 top-full z-40 mt-1.5 w-60 rounded-lg p-1 shadow-soft"
+        >
+          <MenuItem
+            checked={unreadOnly}
+            onClick={() => onUnreadOnlyChange(!unreadOnly)}
+          >
+            僅顯示未讀
+          </MenuItem>
+          <MenuItem
+            onClick={() => {
+              onClearRead();
+              setMenuOpen(false);
+            }}
+          >
+            清除已讀紀錄
+          </MenuItem>
+          {onCinematicChange && (
+            <MenuItem
+              hint="d"
+              onClick={() => {
+                onCinematicChange(!cinematic);
+                setMenuOpen(false);
+              }}
+            >
+              夜間漂流（全螢幕輪播）
+            </MenuItem>
+          )}
+          {onRefresh && (
+            <MenuItem
+              onClick={() => {
+                onRefresh();
+                setMenuOpen(false);
+              }}
+            >
+              {refreshing ? "整理中…" : "重新整理"}
+            </MenuItem>
+          )}
+          <div className="my-1 border-t border-river-border" />
+          <p className="px-2.5 py-1.5 text-[0.6875rem] leading-relaxed text-river-muted">
+            快捷鍵：r 隨緣一潛 · g 圖牆 · d 漂流
+            <br />
+            河道依新到舊排列，來源穿插混入
           </p>
         </div>
       )}

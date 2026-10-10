@@ -8,29 +8,34 @@ export function PostSkeleton({
   author?: string;
 }) {
   return (
-    <article className="fade-rise" aria-busy="true" aria-label="載入文章">
-      <div className="mb-4 h-3 w-20 animate-pulse rounded bg-river-panel" />
-      <div className="glass-panel mb-5 overflow-hidden rounded-2xl">
-        <div className="p-4 sm:p-5">
-          {channel ? (
-            <div className="mb-3 text-xs text-river-muted">{channel}</div>
-          ) : (
-            <div className="mb-3 h-4 w-28 animate-pulse rounded bg-river-border/60" />
-          )}
-          {title ? (
-            <h1 className="mb-3 text-xl font-bold leading-snug text-river-text sm:text-2xl">
-              {title}
-            </h1>
-          ) : (
-            <div className="mb-3 h-7 w-3/4 animate-pulse rounded bg-river-border/60" />
-          )}
-          {author ? (
-            <div className="text-xs text-river-muted">作者 {author}</div>
-          ) : (
-            <div className="h-3 w-40 animate-pulse rounded bg-river-border/50" />
-          )}
-        </div>
-      </div>
+    <article
+      className="fade-rise mx-auto max-w-read"
+      aria-busy="true"
+      aria-label="載入文章"
+    >
+      <div className="mb-6 h-3 w-20 animate-pulse rounded bg-river-raised" />
+      <header className="mb-8 border-b border-river-border pb-6">
+        {channel ? (
+          <div className="mb-3 text-[0.8125rem] text-river-muted">{channel}</div>
+        ) : (
+          <div className="mb-3 h-3.5 w-28 animate-pulse rounded bg-river-raised" />
+        )}
+        {title ? (
+          <h1 className="text-[1.625rem] font-semibold leading-[1.35] tracking-[-0.015em] text-river-text sm:text-[2rem]">
+            {title}
+          </h1>
+        ) : (
+          <div className="space-y-2">
+            <div className="h-7 w-full animate-pulse rounded bg-river-raised" />
+            <div className="h-7 w-2/3 animate-pulse rounded bg-river-raised" />
+          </div>
+        )}
+        {author ? (
+          <div className="mt-4 text-[0.8125rem] text-river-muted">{author}</div>
+        ) : (
+          <div className="mt-4 h-3 w-40 animate-pulse rounded bg-river-raised" />
+        )}
+      </header>
       <BodySkeleton />
     </article>
   );
@@ -38,20 +43,20 @@ export function PostSkeleton({
 
 export function BodySkeleton() {
   return (
-    <>
-      <div className="glass-panel mb-8 space-y-3 rounded-xl p-4 sm:p-5">
-        <div className="h-4 w-full animate-pulse rounded bg-river-border/50" />
-        <div className="h-4 w-11/12 animate-pulse rounded bg-river-border/50" />
-        <div className="h-4 w-4/5 animate-pulse rounded bg-river-border/40" />
-        <div className="h-4 w-full animate-pulse rounded bg-river-border/40" />
-        <div className="h-4 w-2/3 animate-pulse rounded bg-river-border/30" />
-        <div className="h-4 w-5/6 animate-pulse rounded bg-river-border/30" />
+    <div className="mx-auto max-w-read" aria-hidden>
+      <div className="mb-10 space-y-3.5">
+        <div className="h-4 w-full animate-pulse rounded bg-river-raised" />
+        <div className="h-4 w-11/12 animate-pulse rounded bg-river-raised" />
+        <div className="h-4 w-4/5 animate-pulse rounded bg-river-raised" />
+        <div className="h-4 w-full animate-pulse rounded bg-river-raised" />
+        <div className="h-4 w-2/3 animate-pulse rounded bg-river-raised" />
+        <div className="h-4 w-5/6 animate-pulse rounded bg-river-raised" />
       </div>
-      <div className="mb-3 h-4 w-16 animate-pulse rounded bg-river-border/40" />
-      <div className="space-y-2">
-        <div className="h-12 animate-pulse rounded-lg bg-river-panel/60" />
-        <div className="h-12 animate-pulse rounded-lg bg-river-panel/40" />
+      <div className="mb-4 h-4 w-12 animate-pulse rounded bg-river-raised" />
+      <div className="space-y-3">
+        <div className="h-10 animate-pulse rounded bg-river-raised" />
+        <div className="h-10 animate-pulse rounded bg-river-raised" />
       </div>
-    </>
+    </div>
   );
 }

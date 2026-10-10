@@ -93,12 +93,12 @@ export function CinematicDrift({
 
   if (n === 0) {
     return (
-      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-river-bg/95 p-6">
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-river-bg p-6">
         <p className="mb-4 text-sm text-river-muted">沒有可漂流的內容</p>
         <button
           type="button"
           onClick={onExit}
-          className="rounded-full border border-river-accent/40 px-4 py-2 text-sm text-river-accent"
+          className="rounded-md border border-river-border px-4 py-2 text-sm text-river-text hover:bg-river-raised"
         >
           離開漂流
         </button>
@@ -118,7 +118,7 @@ export function CinematicDrift({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex flex-col bg-river-bg"
+      className="fixed inset-0 z-50 flex flex-col bg-[#141416]"
       role="dialog"
       aria-modal="true"
       aria-label="夜間漂流"
@@ -151,7 +151,7 @@ export function CinematicDrift({
             className="h-full w-full fade-rise"
             style={{
               background:
-                "linear-gradient(135deg, rgb(var(--river-bg)), rgb(var(--river-accent) / 0.18), rgb(var(--river-panel)))",
+                "linear-gradient(160deg, #26262b 0%, #18181b 100%)",
             }}
           />
         )}
@@ -160,26 +160,26 @@ export function CinematicDrift({
 
       <div className="relative z-10 flex items-center justify-between gap-3 px-4 pt-4 sm:px-6">
         <div className="flex items-center gap-2">
-          <span className="rounded-full border border-river-accent/40 bg-river-bg/50 px-2.5 py-1 text-[0.6875rem] font-semibold text-river-accent backdrop-blur">
+          <span className="text-[0.8125rem] font-semibold text-white/90">
             夜間漂流
           </span>
-          <span className="tabular-nums text-[0.6875rem] text-river-text/60">
+          <span className="tabular-nums text-[0.75rem] text-white/60">
             {index + 1} / {n}
           </span>
         </div>
         <button
           type="button"
           onClick={onExit}
-          className="rounded-full border border-river-border bg-river-bg/50 px-3 py-1.5 text-xs text-river-text/80 backdrop-blur hover:border-river-accent hover:text-river-accent"
+          className="rounded-md bg-white/10 px-3 py-1.5 text-[0.75rem] text-white/85 transition-colors hover:bg-white/20"
         >
           離開 Esc
         </button>
       </div>
 
-      <div className="relative z-10 mx-4 mt-3 h-0.5 overflow-hidden rounded-full bg-river-border/60 sm:mx-6">
+      <div className="relative z-10 mx-4 mt-3 h-0.5 overflow-hidden rounded-full bg-white/15 sm:mx-6">
         <div
           key={`${item.id}-${paused}-${index}`}
-          className={`h-full rounded-full bg-river-accent ${paused ? "" : "animate-drift-progress"}`}
+          className={`h-full rounded-full bg-white/70 ${paused ? "" : "animate-drift-progress"}`}
           style={{
             width: paused ? "100%" : undefined,
             animationDuration: `${INTERVAL_MS}ms`,
@@ -190,19 +190,19 @@ export function CinematicDrift({
       <div className="relative z-10 mt-auto flex flex-1 flex-col justify-end px-4 pb-6 sm:px-8 sm:pb-10">
         <button type="button" onClick={openDetail} className="max-w-3xl text-left">
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <SourceBadge source={item.source} />
-            <span className="text-xs text-white/80 drop-shadow">{item.channel}</span>
-            <span className="text-xs tabular-nums text-white/55 drop-shadow">
+            <SourceBadge source={item.source} tone="onImage" />
+            <span className="text-xs text-white/75">{item.channel}</span>
+            <span className="text-xs tabular-nums text-white/55">
               {formatTime(item.createdAt)}
             </span>
           </div>
-          <h2 className="text-2xl font-bold leading-snug text-white drop-shadow-lg sm:text-4xl">
+          <h2 className="text-2xl font-semibold leading-snug tracking-[-0.01em] text-white sm:text-4xl">
             {item.title}
           </h2>
-          <p className="mt-3 line-clamp-3 max-w-2xl text-sm leading-relaxed text-white/75 drop-shadow sm:text-base">
+          <p className="mt-3 line-clamp-3 max-w-2xl text-sm leading-relaxed text-white/75 sm:text-base">
             {item.preview}
           </p>
-          <p className="mt-3 text-[0.6875rem] text-river-accent drop-shadow">
+          <p className="mt-3 text-[0.75rem] text-white/60 underline-offset-2 hover:underline">
             點擊查看全文 →
           </p>
         </button>
@@ -211,7 +211,7 @@ export function CinematicDrift({
           <button
             type="button"
             onClick={() => go(-1)}
-            className="rounded-full border border-white/30 bg-black/25 px-4 py-2 text-sm text-white backdrop-blur hover:border-river-accent dark:bg-black/40"
+            className="rounded-md bg-white/10 px-4 py-2 text-sm text-white/90 transition-colors hover:bg-white/20"
             aria-label="上一則"
           >
             ← 上一則
@@ -219,7 +219,7 @@ export function CinematicDrift({
           <button
             type="button"
             onClick={() => setPaused((p) => !p)}
-            className="rounded-full border border-white/30 bg-black/25 px-4 py-2 text-sm text-white backdrop-blur hover:border-river-accent dark:bg-black/40"
+            className="rounded-md bg-white/10 px-4 py-2 text-sm text-white/90 transition-colors hover:bg-white/20"
             aria-label={paused ? "繼續" : "暫停"}
           >
             {paused ? "▶ 繼續" : "⏸ 暫停"}
@@ -227,7 +227,7 @@ export function CinematicDrift({
           <button
             type="button"
             onClick={() => go(1)}
-            className="rounded-full border border-white/30 bg-black/25 px-4 py-2 text-sm text-white backdrop-blur hover:border-river-accent dark:bg-black/40"
+            className="rounded-md bg-white/10 px-4 py-2 text-sm text-white/90 transition-colors hover:bg-white/20"
             aria-label="下一則"
           >
             下一則 →

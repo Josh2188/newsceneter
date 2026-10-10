@@ -12,6 +12,7 @@ const config: Config = {
         river: {
           bg: "rgb(var(--river-bg) / <alpha-value>)",
           panel: "rgb(var(--river-panel) / <alpha-value>)",
+          raised: "rgb(var(--river-raised) / <alpha-value>)",
           border: "rgb(var(--river-border) / <alpha-value>)",
           muted: "rgb(var(--river-muted) / <alpha-value>)",
           text: "rgb(var(--river-text) / <alpha-value>)",
@@ -27,36 +28,33 @@ const config: Config = {
       maxWidth: {
         "3xl": "48rem",
         "4xl": "56rem",
+        feed: "46rem",
+        read: "38rem",
       },
       fontFamily: {
+        sans: [
+          "Inter",
+          "-apple-system",
+          "BlinkMacSystemFont",
+          '"Segoe UI"',
+          '"PingFang TC"',
+          '"Noto Sans TC"',
+          '"Microsoft JhengHei"',
+          '"Helvetica Neue"',
+          "Arial",
+          "sans-serif",
+        ],
         mono: [
           "ui-monospace",
           "SFMono-Regular",
           "Menlo",
           "Monaco",
           "Consolas",
-          "Liberation Mono",
-          "Courier New",
           "monospace",
         ],
       },
-      keyframes: {
-        shimmer: {
-          "0%, 100%": { backgroundPosition: "0% center" },
-          "50%": { backgroundPosition: "100% center" },
-        },
-        float: {
-          "0%, 100%": { transform: "translateY(0)" },
-          "50%": { transform: "translateY(-6px)" },
-        },
-      },
-      animation: {
-        shimmer: "shimmer 6s ease-in-out infinite",
-        float: "float 4.5s ease-in-out infinite",
-      },
       boxShadow: {
-        glow: "0 0 28px -8px var(--river-glow)",
-        "glow-lg": "0 0 48px -12px var(--river-glow)",
+        soft: "var(--shadow-md)",
       },
     },
   },

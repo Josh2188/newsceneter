@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { FeedItem, Post, SourceId } from "@/lib/sources/types";
 import { candidatePendingIds, readPendingPost } from "@/lib/pendingPost";
-import { PostArticle } from "@/components/PostArticle";
+import { BackLink, PostArticle } from "@/components/PostArticle";
 import { BodySkeleton } from "@/components/PostSkeleton";
 
 const VALID: SourceId[] = ["ptt", "threads", "news"];
@@ -96,7 +96,7 @@ export function PostView({ params }: { params: Record<string, string> }) {
   if (!VALID.includes(source)) {
     return (
       <div className="py-16 text-center">
-        <p className="mb-2 font-mono text-lg text-river-text">找不到內容</p>
+        <p className="mb-2 text-lg font-semibold text-river-text">找不到內容</p>
         <Link href="/" className="text-sm text-river-accent hover:underline">
           ← 返回河道
         </Link>
@@ -110,7 +110,7 @@ export function PostView({ params }: { params: Record<string, string> }) {
         <PostArticle post={post} pending={pending} />
         {pending && !post.body && <BodySkeleton />}
         {error && !pending && (
-          <p className="mt-3 rounded-xl border border-dashed border-river-warn/40 bg-river-warn/10 px-3 py-3 text-sm text-river-warn">
+          <p className="mx-auto mt-3 max-w-read rounded-lg bg-river-warn/10 px-4 py-3 text-sm text-river-warn">
             {error}。以上為預覽，請至原文查看。
           </p>
         )}
@@ -121,7 +121,7 @@ export function PostView({ params }: { params: Record<string, string> }) {
   if (error) {
     return (
       <div className="py-16 text-center">
-        <p className="mb-2 font-mono text-lg text-river-text">{error}</p>
+        <p className="mb-2 text-lg font-semibold text-river-text">{error}</p>
         <p className="mb-6 text-sm text-river-muted">文章可能已刪除，或參數無效。</p>
         <Link href="/" className="text-sm text-river-accent hover:underline">
           ← 返回河道
@@ -131,13 +131,8 @@ export function PostView({ params }: { params: Record<string, string> }) {
   }
 
   return (
-    <article className="fade-rise" aria-busy="true">
-      <Link
-        href="/"
-        className="mb-4 inline-flex text-xs text-river-muted hover:text-river-accent"
-      >
-        ← 返回河道
-      </Link>
+    <article className="fade-rise mx-auto max-w-read" aria-busy="true">
+      <BackLink />
       <BodySkeleton />
     </article>
   );

@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 
-/** Tiny live indicator of system color scheme (read-only). */
+/** Tiny read-only indicator that colors follow the system appearance. */
 export function ThemeHint() {
-  const [scheme, setScheme] = useState<"light" | "dark">("dark");
+  const [scheme, setScheme] = useState<"light" | "dark" | null>(null);
 
   useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: light)");
@@ -14,13 +14,13 @@ export function ThemeHint() {
     return () => mq.removeEventListener("change", sync);
   }, []);
 
+  if (!scheme) return null;
   return (
     <span
-      className="hidden items-center gap-1.5 rounded-full border border-river-accent/20 bg-river-accent/5 px-2.5 py-1 text-[0.625rem] text-river-accent sm:inline-flex"
-      title="跟隨系統外觀"
+      className="hidden text-[0.75rem] text-river-muted sm:inline"
+      title="配色跟隨系統外觀"
     >
-      <span aria-hidden>{scheme === "light" ? "☀" : "☾"}</span>
-      for Josh · TW · {scheme === "light" ? "日間" : "夜間"}
+      {scheme === "light" ? "日間" : "夜間"} · 跟隨系統
     </span>
   );
 }

@@ -46,7 +46,7 @@ function PostImages({ images }: { images: string[] }) {
   if (!images.length) return null;
   return (
     <section className="post-images" aria-label="文章圖片">
-      <h2 className="mb-3 font-mono text-sm font-semibold text-river-muted">
+      <h2 className="mb-3 text-[0.8125rem] font-medium text-river-muted">
         圖片（{images.length}）
       </h2>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -56,7 +56,7 @@ function PostImages({ images }: { images: string[] }) {
             href={src}
             target="_blank"
             rel="noopener noreferrer"
-            className="glass-panel card-lift block overflow-hidden rounded-xl"
+            className="block overflow-hidden rounded-lg border border-river-border/70 bg-river-raised transition-opacity hover:opacity-90"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -116,14 +116,14 @@ export function PostBody({
 
   return (
     <>
-      <div className={`${proseClass} glass-panel mb-8 rounded-xl p-4 sm:p-5`}>
+      <div className={`${proseClass} mb-8`}>
         {blocks.map((block, i) => {
           const node = renderBlock(block, i);
           if (afterFirst && gallery && i === firstP) {
             return (
               <div key={`lead-${i}`}>
                 {node}
-                <div className="my-5">
+                <div className="my-7">
                   <PostImages images={gallery} />
                 </div>
               </div>

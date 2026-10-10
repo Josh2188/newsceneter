@@ -42,8 +42,9 @@ export const SOURCE_LABEL: Record<string, string> = {
   news: "新聞",
 };
 
-export const SOURCE_BADGE_CLASS: Record<string, string> = {
-  ptt: "bg-river-ptt/15 text-river-ptt border-river-ptt/30",
-  threads: "bg-river-threads/15 text-river-threads border-river-threads/30",
-  news: "bg-river-news/15 text-river-news border-river-news/30",
+/** Small muted source dot colors. */
+export const SOURCE_DOT_CLASS: Record<string, string> = {
+  ptt: "bg-river-ptt",
+  threads: "bg-river-threads",
+  news: "bg-river-news",
 };
